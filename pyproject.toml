@@ -1,0 +1,11 @@
+[tool.pytest.ini_options]
+# Make `from src...` imports resolve when running pytest from the repo root,
+# and let plain `async def test_*` run without a per-test decorator.
+pythonpath = ["."]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
