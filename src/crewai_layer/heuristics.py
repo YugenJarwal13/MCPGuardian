@@ -141,3 +141,41 @@ def static_heuristic(tool_name: str, tool_description: str, tool_schema: dict) -
         reasoning="No embedded instructions, encoding anomalies, or scope mismatch found.",
         flagged_phrases=[],
     )
+
+
+def runtime_heuristic(tool_name: str, tool_response: str) -> InspectionVerdict:
+    """Deterministic runtime analysis over a tool's RESPONSE body.
+
+    The response is DATA, not a command, unless it demonstrates directive intent
+    aimed at the calling agent. Instruction-adjacent words in ordinary data (a
+    changelog saying "ignore the deprecated v1 API", a news article ABOUT prompt
+    injection) are deliberately NOT enough to move the verdict off clean — the
+    same conservative directive scanner used for metadata enforces that.
+    """
+    text = tool_response or ""
+    directives = _scan_directives(text)
+    encoding = _scan_encoding(text)
+
+    if directives:
+        return InspectionVerdict(
+            verdict="malicious",
+            confidence=0.88,
+            reasoning=(
+                "Tool response contains an injected instruction directed at the calling "
+                f"agent ({len(directives)} directive signal(s)) — indirect prompt injection."
+            ),
+            flagged_phrases=directives,
+        )
+    if encoding:
+        return InspectionVerdict(
+            verdict="suspicious",
+            confidence=0.6,
+            reasoning="Response contains encoding/formatting anomalies worth a closer look.",
+            flagged_phrases=encoding,
+        )
+    return InspectionVerdict(
+        verdict="clean",
+        confidence=0.8,
+        reasoning="Response reads as ordinary data with no directive intent aimed at the agent.",
+        flagged_phrases=[],
+    )

@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import os
 
-from src.crewai_layer.heuristics import static_heuristic
+import time
+
+from src.crewai_layer.heuristics import runtime_heuristic, static_heuristic
 from src.crewai_layer.schemas import InspectionVerdict
 
 _PROVIDER_KEY_ENV = {
@@ -64,3 +66,41 @@ def run_static_analysis(
     return verdict if isinstance(verdict, InspectionVerdict) else static_heuristic(
         tool_name, tool_description, tool_schema
     )
+
+
+def run_runtime_inspection(
+    tool_name: str, tool_response: str, use_llm: bool | None = None
+) -> InspectionVerdict:
+    """Return an InspectionVerdict for a tool's live RESPONSE body."""
+    if use_llm is None:
+        use_llm = llm_available()
+
+    if not use_llm:
+        return runtime_heuristic(tool_name, tool_response)
+
+    from crewai import Crew
+
+    from src.crewai_layer.agents.runtime_inspection_agent import runtime_inspection_agent
+    from src.crewai_layer.tasks.runtime_inspection_task import build_runtime_inspection_task
+
+    task = build_runtime_inspection_task(runtime_inspection_agent, tool_name, tool_response)
+    crew = Crew(agents=[runtime_inspection_agent], tasks=[task])
+    result = crew.kickoff()
+    verdict = getattr(result, "pydantic", None)
+    return verdict if isinstance(verdict, InspectionVerdict) else runtime_heuristic(
+        tool_name, tool_response
+    )
+
+
+def run_runtime_inspection_timed(
+    tool_name: str, tool_response: str, use_llm: bool | None = None
+) -> tuple[InspectionVerdict, float]:
+    """As above, but also returns per-call latency in milliseconds.
+
+    This agent runs on EVERY tool call in production use, so its overhead is a
+    first-class number for the final report — measure it from day one.
+    """
+    start = time.monotonic()
+    verdict = run_runtime_inspection(tool_name, tool_response, use_llm=use_llm)
+    elapsed_ms = (time.monotonic() - start) * 1000
+    return verdict, elapsed_ms
