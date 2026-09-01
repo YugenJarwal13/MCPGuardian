@@ -1,0 +1,28 @@
+{
+  "dvmcp_count": 10,
+  "mcptox_count": 30,
+  "benign_count": 7,
+  "custom_count": 0,
+  "total": 47,
+  "by_category": {
+    "clean": 7,
+    "credential_theft": 3,
+    "data_exfiltration": 3,
+    "data_tampering": 3,
+    "denial_of_service": 3,
+    "excessive_permission_scope": 1,
+    "indirect_prompt_injection": 1,
+    "malicious_code_execution": 1,
+    "multi_vector_attack": 1,
+    "phishing": 3,
+    "privilege_escalation": 3,
+    "prompt_injection": 4,
+    "remote_access_control": 1,
+    "remote_code_execution": 3,
+    "rug_pull": 1,
+    "token_theft": 1,
+    "tool_poisoning": 4,
+    "tool_shadowing": 1,
+    "unauthorized_access": 3
+  }
+}

@@ -23,7 +23,6 @@ htmlcov/
 logs/*.jsonl
 logs/*.db
 logs/*.log
-data_manifest.json
 src/evaluation/reports/*.csv
 
 # Third-party clones (kept out of our authored history)
