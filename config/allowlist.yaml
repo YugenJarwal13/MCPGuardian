@@ -1,0 +1,14 @@
+# Sensitive scopes and verdict policy for the Phase 6 enforcement layer.
+#
+# These scopes ALWAYS require a human, independently of (and before) any AI
+# verdict. This is the defense-in-depth layer: even if every inspection agent
+# is fooled, a tool requesting one of these still cannot auto-execute.
+always_require_human_approval:
+  - scope: filesystem_write
+  - scope: network_egress
+  - scope: credential_access
+  - scope: code_execution
+
+# Combined-verdict -> action mapping.
+auto_block_on_verdict: ["malicious"]
+escalate_on_verdict: ["suspicious"]

@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Guardian Demo",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/demo_agent/run_demo.py",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Run Evaluation",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/evaluation/run_eval.py",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ]
+}

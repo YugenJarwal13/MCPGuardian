@@ -1,0 +1,17 @@
+# Spins up the DVMCP challenge lab alongside any demo MCP servers.
+#
+# DVMCP ships as a Docker image built from external/damn-vulnerable-MCP-server
+# (see scripts/setup_dvmcp.sh, which builds the `dvmcp` image). This compose file
+# runs that image and maps the 10 challenge ports 1:1.
+#
+# On Windows, run this with Linux containers (Docker Desktop / WSL2) — DVMCP's
+# own README notes it is unstable on native Windows Python.
+services:
+  dvmcp:
+    image: dvmcp
+    container_name: dvmcp-lab
+    build:
+      context: ./external/damn-vulnerable-MCP-server
+    ports:
+      - "9001-9010:9001-9010"
+    restart: unless-stopped

@@ -1,0 +1,40 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Testing / caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Runtime-generated artifacts
+logs/*.jsonl
+logs/*.db
+logs/*.log
+data_manifest.json
+src/evaluation/reports/*.csv
+
+# Third-party clones (kept out of our authored history)
+external/damn-vulnerable-MCP-server/
+external/MCPTox-Benchmark/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+
+# Keep empty dirs tracked
+!**/.gitkeep

@@ -1,0 +1,30 @@
+# MCP Guardian runtime configuration.
+llm:
+  # Provider + model are resolved from .env (LLM_PROVIDER) at runtime; these are
+  # sensible defaults the loader falls back to when the env var is unset.
+  provider: openai
+  model: gpt-4o-mini
+  temperature: 0.0        # deterministic security reasoning
+
+thresholds:
+  # Behavioral-anomaly (Phase 5) tuning knobs.
+  response_length_zscore: 3.0
+  fingerprint_warmup_samples: 5
+  # Confidence below this is treated as "low confidence" in the audit trail.
+  min_verdict_confidence: 0.5
+
+timeouts:
+  # Per-agent wall-clock budget (seconds) before a verdict is treated as
+  # inconclusive and the call is escalated rather than silently allowed.
+  static_analysis_s: 30
+  runtime_inspection_s: 30
+
+dvmcp:
+  host: localhost
+  port_start: 9001
+  port_end: 9010
+
+paths:
+  audit_trail: logs/audit_trail.jsonl
+  fingerprint_db: logs/fingerprints.db
+  reports_dir: src/evaluation/reports
