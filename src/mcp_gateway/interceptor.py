@@ -1,55 +1,198 @@
-"""Phase 2 — GuardianInterceptor (orchestration point).
+"""GuardianInterceptor — the orchestration point every MCP call routes through.
 
-This is the one file touched in almost every subsequent phase, so its interface
-is fixed early and its body is filled in incrementally:
-
+Wiring, by phase:
     Phase 3  -> screen_tool_metadata  runs the static-analysis crew
     Phase 4  -> screen_tool_response  runs the runtime-inspection crew
     Phase 5  -> screen_tool_response  also updates the behavioural fingerprint
     Phase 6  -> pre_call_check        combines verdicts + enforces allow/block/escalate
 
-Keep it thin — it should read like a sequence diagram, not hold business logic.
-In its default configuration (all components ``None``) every method is a
-pass-through, so the Phase 0 MCP hello-world works unchanged when routed through
-``GuardedMCPClient(session, GuardianInterceptor())``.
+Default construction (``GuardianInterceptor()``) leaves every layer off, so it is
+a faithful pass-through (the Phase 2 plumbing contract). Use
+``build_default_interceptor()`` for a fully-wired instance.
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+import json
+from typing import Any, Awaitable, Callable, Optional
+
+from src.adk_layer.behavioral_anomaly_agent import BehavioralAnomalyAgent
+from src.adk_layer.callbacks.enforcement_callbacks import (
+    GuardianBlockedError,
+    GuardianDecision,
+    combine_verdicts,
+    enforce,
+)
+from src.adk_layer.state.session_schema import ToolFingerprint
+from src.adk_layer.state.tool_fingerprint_store import ToolFingerprintStore
+from src.audit import log_decision
+from src.config import allowlist as load_allowlist
+from src.crewai_layer.crew import run_runtime_inspection_timed, run_static_analysis
+from src.crewai_layer.schemas import InspectionVerdict
+from src.data.schemas import ToolTestCase
+from src.evaluation.ablation_config import AblationConfig
+
+
+# --- helpers to read heterogeneous MCP shapes (attribute objects OR dicts) ----
+def _attr(obj: Any, name: str, default=None):
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
+
+
+def _iter_tools(listed: Any):
+    tools = _attr(listed, "tools", listed)
+    return tools if isinstance(tools, list) else []
+
+
+def _tool_fields(tool: Any) -> tuple[str, str, dict]:
+    name = _attr(tool, "name", "") or ""
+    desc = _attr(tool, "description", "") or ""
+    schema = _attr(tool, "inputSchema", None) or _attr(tool, "tool_schema", None) or {}
+    return name, desc, (schema if isinstance(schema, dict) else {"raw": schema})
+
+
+def _response_text_and_keys(response: Any) -> tuple[str, set[str]]:
+    # MCP CallToolResult -> .content list of items with .text; else stringify.
+    content = _attr(response, "content", None)
+    if isinstance(content, list):
+        parts = [str(_attr(item, "text", item)) for item in content]
+        text = "\n".join(parts)
+    else:
+        text = response if isinstance(response, str) else json.dumps(response, default=str)
+    keys: set[str] = set()
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            keys = set(parsed.keys())
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return text, keys
+
+
+def _refusal(tool_name: str, reason: str) -> dict:
+    """An MCP-shaped refusal result — never a raw Python exception surfaced to the
+    reasoning agent."""
+    return {
+        "isError": True,
+        "guardian_blocked": True,
+        "content": [{"type": "text", "text": f"[MCP Guardian] {reason}"}],
+        "tool_name": tool_name,
+    }
 
 
 class GuardianInterceptor:
     def __init__(
         self,
-        static_crew: Optional[Any] = None,
-        runtime_crew: Optional[Any] = None,
-        anomaly_agent: Optional[Any] = None,
-        enforcement_callback: Optional[Any] = None,
+        ablation: Optional[AblationConfig] = None,
+        use_llm: Optional[bool] = None,
+        fingerprint_store: Optional[ToolFingerprintStore] = None,
+        anomaly_agent: Optional[BehavioralAnomalyAgent] = None,
+        allowlist: Optional[dict] = None,
+        human_approval_callback: Optional[Callable[[str], Awaitable[bool]]] = None,
     ):
-        self._static_crew = static_crew                    # wired in Phase 3
-        self._runtime_crew = runtime_crew                  # wired in Phase 4
-        self._anomaly_agent = anomaly_agent                # wired in Phase 5
-        self._enforcement_callback = enforcement_callback  # wired in Phase 6
+        # No ablation given => legacy no-op configuration (Phase 2 contract).
+        self._ablation = ablation or AblationConfig(
+            enable_static=False, enable_runtime=False, enable_behavioral=False
+        )
+        self._use_llm = use_llm
+        self._store = fingerprint_store
+        self._anomaly_agent = anomaly_agent or BehavioralAnomalyAgent(use_llm=use_llm)
+        self._allowlist = allowlist if allowlist is not None else load_allowlist()
+        self._human = human_approval_callback
 
+        # Per-tool verdict cache the enforcement gate reads at call time.
+        self._static: dict[str, InspectionVerdict] = {}
+        self._runtime: dict[str, InspectionVerdict] = {}
+        self._anomalous: dict[str, bool] = {}
+        self._scope: dict[str, Optional[str]] = {}
+
+    # -- Phase 3: metadata screening ------------------------------------------
     async def screen_tool_metadata(self, tools: Any) -> Any:
-        if self._static_crew is None:
-            return tools  # Phase 2: no-op pass-through
-        # Phase 3+: run each tool through the static-analysis crew, attach the
-        # verdict as tool metadata, let enforcement decide whether to hide/flag it.
-        raise NotImplementedError("wired in Phase 3")
+        if not self._ablation.enable_static:
+            return tools
+        for tool in _iter_tools(tools):
+            name, desc, schema = _tool_fields(tool)
+            verdict = run_static_analysis(name, desc, schema, use_llm=self._use_llm)
+            self._static[name] = verdict
+            self._scope[name] = ToolTestCase(
+                case_id="live", source="custom", tool_name=name, tool_description=desc,
+                tool_schema=schema, ground_truth_label="clean",
+            ).requested_scope()
+            log_decision({
+                "layer": "static", "tool_name": name, "verdict": verdict.verdict,
+                "confidence": verdict.confidence, "reasoning": verdict.reasoning,
+                "flagged_phrases": verdict.flagged_phrases,
+            })
+        return tools
 
+    # -- Phase 6: pre-call enforcement gate -----------------------------------
     async def pre_call_check(self, name: str, arguments: dict, session: Any) -> Optional[Any]:
-        if self._enforcement_callback is None:
-            return None  # Phase 2: never short-circuits
-        # Phase 6+: check the tool's last known verdict + allowlist.yaml; return a
-        # refusal CallToolResult here to hard-block, or None to proceed.
-        raise NotImplementedError("wired in Phase 6")
+        decision = combine_verdicts(
+            static_verdict=self._static.get(name),
+            runtime_verdict=self._runtime.get(name),
+            is_behaviorally_anomalous=self._anomalous.get(name, False),
+            requested_scope=self._scope.get(name),
+            allowlist=self._allowlist,
+        )
+        try:
+            await enforce(decision, name, human_approval_callback=self._human)
+        except GuardianBlockedError as exc:
+            log_decision({"layer": "enforcement", "tool_name": name,
+                          "decision": decision.value, "blocked": True, "reason": str(exc)})
+            return _refusal(name, str(exc))
+        log_decision({"layer": "enforcement", "tool_name": name,
+                      "decision": decision.value, "blocked": False})
+        return None
 
+    # -- Phase 4/5: response screening ----------------------------------------
     async def screen_tool_response(self, name: str, response: Any) -> Any:
-        if self._runtime_crew is None:
-            return response  # Phase 2: no-op pass-through
-        # Phase 4+: run the response through the runtime-inspection agent;
-        # Phase 5+: also update/check the behavioural fingerprint;
-        # Phase 6+: let enforcement decide allow/redact/block, and always append a
-        # decision record to logs/audit_trail.jsonl regardless of outcome.
-        raise NotImplementedError("wired in Phase 4")
+        text, keys = _response_text_and_keys(response)
+
+        if self._ablation.enable_runtime:
+            verdict, elapsed_ms = run_runtime_inspection_timed(name, text, use_llm=self._use_llm)
+            self._runtime[name] = verdict
+            log_decision({"layer": "runtime", "tool_name": name, "verdict": verdict.verdict,
+                          "confidence": verdict.confidence, "reasoning": verdict.reasoning,
+                          "flagged_phrases": verdict.flagged_phrases, "latency_ms": round(elapsed_ms, 3)})
+        else:
+            verdict = None
+
+        if self._ablation.enable_behavioral and self._store is not None:
+            fp = self._store.get(name)
+            fp, report = self._anomaly_agent.analyze(fp, text, keys, latency_ms=0.0)
+            self._store.update(fp)
+            self._anomalous[name] = report.is_anomalous
+            log_decision({"layer": "behavioral", "tool_name": name,
+                          "anomalous": report.is_anomalous, "reasoning": report.explanation,
+                          "evidence": report.evidence})
+
+        # Post-response enforcement: block/redact a malicious response.
+        decision = combine_verdicts(
+            static_verdict=self._static.get(name),
+            runtime_verdict=self._runtime.get(name),
+            is_behaviorally_anomalous=self._anomalous.get(name, False),
+            requested_scope=self._scope.get(name),
+            allowlist=self._allowlist,
+        )
+        if decision == GuardianDecision.BLOCK:
+            log_decision({"layer": "enforcement", "tool_name": name, "decision": "block",
+                          "blocked": True, "phase": "response", "reason": "malicious response"})
+            return _refusal(name, "Response blocked: injected instruction detected.")
+        return response
+
+
+def build_default_interceptor(
+    ablation: Optional[AblationConfig] = None,
+    use_llm: Optional[bool] = None,
+    human_approval_callback: Optional[Callable[[str], Awaitable[bool]]] = None,
+) -> GuardianInterceptor:
+    """A fully-wired interceptor: all three layers on (unless overridden by
+    ``ablation``), backed by the persistent fingerprint store."""
+    from src.config import resolve_path
+
+    return GuardianInterceptor(
+        ablation=ablation or AblationConfig(),
+        use_llm=use_llm,
+        fingerprint_store=ToolFingerprintStore(db_path=resolve_path("fingerprint_db")),
+        human_approval_callback=human_approval_callback,
+    )
