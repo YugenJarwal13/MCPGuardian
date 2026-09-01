@@ -35,6 +35,11 @@ class ToolTestCase(BaseModel):
             return "code_execution"
         if any(k in blob for k in ("http://", "https://", "requests.", "urllib", "socket", "egress", "upload", "send_to")):
             return "network_egress"
-        if any(k in blob for k in ("open(", "write", "path", "filename", "filesystem", "/etc/", "delete_file")):
+        # filesystem_write requires actual WRITE intent — a read-only lister that
+        # merely mentions "path"/"filesystem" is not a write-scoped tool.
+        if any(k in blob for k in (
+            "write", "overwrite", "delete", "unlink", "rename", "save", "modify",
+            "read+write", "read/write", "'w'", '"w"', "'rw'", '"rw"', "/etc/", "delete_file",
+        )):
             return "filesystem_write"
         return None
