@@ -1,14 +1,12 @@
 """Phase 1.4 — MCPTox-Benchmark loader.
 
 MCPTox is an *attack-only* dataset of (Server, Tool, Malicious-payload) triplets
-across 10 risk categories (the paper reports 1,312 cases). Every case here is
-``ground_truth_label="malicious"`` — pair it with ``benign_control_set.py`` for
-negatives; MCPTox itself provides none.
+across 11 risk scopes (the paper reports 1,312 cases). Every attack case here is
+``ground_truth_label="malicious"``. The benchmark does ship the servers' ORIGINAL
+clean tool lists, which ``load_mcptox_clean_tools()`` exposes as real negatives.
 
-The benchmark's public file layout can differ between versions, so this parser is
-deliberately format-tolerant: it walks ``external/MCPTox-Benchmark`` for any
-JSON / JSONL files and extracts triplets from a range of plausible field names.
-When the repo is not cloned, it falls back to a small representative offline
+The parser targets the benchmark's actual ``response_all.json`` layout (see the
+comment block below). When the repo is not cloned, it falls back to a small representative offline
 sample (clearly marked with ``-offline`` case ids) so the pipeline stays
 exercisable. For real, reportable numbers, clone the repo first
 (``bash scripts/setup_mcptox.sh``) and treat its README as the source of truth.
@@ -16,14 +14,15 @@ exercisable. For real, reportable numbers, clone the repo first
 from __future__ import annotations
 
 import json
-from pathlib import Path
+import re
 
 from src.config import REPO_ROOT
 from src.data.schemas import ToolTestCase
 
 MCPTOX_DIR = REPO_ROOT / "external" / "MCPTox-Benchmark"
 
-# MCPTox's 10 risk categories (verify exact spelling against the cloned README).
+# Categories used ONLY by the small offline sample below. The real benchmark's
+# own risk taxonomy is ``MCPTOX_RISK_SCOPES`` (read from the clone at load time).
 RISK_CATEGORIES = [
     "data_exfiltration",
     "credential_theft",
@@ -37,88 +36,128 @@ RISK_CATEGORIES = [
     "denial_of_service",
 ]
 
-# Field-name candidates we try when normalizing an arbitrary record.
-_NAME_KEYS = ("tool_name", "tool", "name", "function", "api")
-_DESC_KEYS = ("tool_description", "description", "desc", "prompt", "payload", "malicious_payload")
-_SCHEMA_KEYS = ("tool_schema", "schema", "parameters", "input_schema", "arguments")
-_CATEGORY_KEYS = ("attack_category", "category", "risk_category", "risk", "type", "attack_type")
+# ---------------------------------------------------------------------------
+# Real benchmark layout (verified against the cloned repo, AAAI'26 release):
+#
+#   response_all.json
+#     data_length:   1348
+#     attack_scopes: ["Credential Leakage", "Privacy Leakage", ...]  (11 risks)
+#     servers: {<server_name>: {
+#         tool_names, clean_system_promot, clean_querys, server_url,
+#         malicious_instance: [{
+#             poisoned_tool: "Tool: <name>\\nDescription: <text>\\nArguments:\\n- ...",
+#             metadata: {"paradigm": "Template-1|2|3", "security risk": "<scope>"},
+#             wrong_data: 0 | 2,          # 2 = flagged bad by the authors (36 rows)
+#             security_risk_description, datas: [...LLM transcripts...]}]}}
+#
+# 1348 - 36 (wrong_data != 0) = 1312, exactly the paper's reported count.
+# ``poisoned_tool`` uses LITERAL backslash-n escapes in most rows, so they are
+# normalized before parsing.
+# ---------------------------------------------------------------------------
+RESPONSE_FILE = "response_all.json"
+
+_TOOL_BLOCK = re.compile(
+    r"\s*Tool:\s*(?P<name>.+?)\n\s*Description:\s*(?P<desc>.*?)"
+    r"(?:\n\s*Arguments:\s*(?P<args>.*))?$",
+    re.S,
+)
+_ARG_LINE = re.compile(r"^-\s*(?P<arg>[^:]+?):\s*(?P<adesc>.*)$")
 
 
-def _first(record: dict, keys: tuple[str, ...], default=None):
-    for k in keys:
-        if k in record and record[k] not in (None, ""):
-            return record[k]
-    return default
+def _snake(label: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
 
 
-def _normalize(record: dict, idx: int) -> ToolTestCase | None:
-    if not isinstance(record, dict):
+def _parse_tool_block(block: str) -> tuple[str, str, dict] | None:
+    """Parse one ``Tool: / Description: / Arguments:`` block into
+    (name, description, JSON-schema-ish dict)."""
+    text = block.replace("\\n", "\n").strip().strip('"')
+    m = _TOOL_BLOCK.match(text)
+    if not m:
         return None
-    name = _first(record, _NAME_KEYS)
-    desc = _first(record, _DESC_KEYS)
-    if not name and not desc:
+    props: dict[str, dict] = {}
+    required: list[str] = []
+    for line in (m.group("args") or "").splitlines():
+        a = _ARG_LINE.match(line.strip())
+        if not a or a.group("arg").strip().lower() == "no arguments":
+            continue
+        arg, adesc = a.group("arg").strip(), a.group("adesc").strip()
+        is_req = adesc.endswith("(required)")
+        adesc = adesc.removesuffix("(required)").strip()
+        props[arg] = {"type": "string", "description": "" if adesc == "No description" else adesc}
+        if is_req:
+            required.append(arg)
+    schema: dict = {"type": "object", "properties": props}
+    if required:
+        schema["required"] = required
+    return m.group("name").strip(), m.group("desc").strip(), schema
+
+
+def _read_response_file() -> dict | None:
+    path = MCPTOX_DIR / RESPONSE_FILE
+    if not path.exists():
         return None
-    schema = _first(record, _SCHEMA_KEYS, default={})
-    if not isinstance(schema, dict):
-        schema = {"raw": schema}
-    category = _first(record, _CATEGORY_KEYS, default="tool_poisoning")
-    return ToolTestCase(
-        case_id=f"mcptox-{idx:05d}",
-        source="mcptox",
-        tool_name=str(name or f"tool_{idx}"),
-        tool_description=str(desc or ""),
-        tool_schema=schema,
-        sample_response=record.get("response") or record.get("sample_response"),
-        ground_truth_label="malicious",
-        attack_category=str(category),
-    )
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _iter_records(path: Path):
-    """Yield dict records from a .json (list or object-of-lists) or .jsonl file."""
-    try:
-        text = path.read_text(encoding="utf-8")
-    except Exception:
-        return
-    if path.suffix == ".jsonl":
-        for line in text.splitlines():
-            line = line.strip()
-            if line:
-                try:
-                    yield json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-        return
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        return
-    if isinstance(data, list):
-        yield from (r for r in data if isinstance(r, dict))
-    elif isinstance(data, dict):
-        # Either a single record or a container of lists.
-        listy = [v for v in data.values() if isinstance(v, list)]
-        if listy:
-            for lst in listy:
-                yield from (r for r in lst if isinstance(r, dict))
-        else:
-            yield data
-
-
-def _load_from_clone() -> list[ToolTestCase]:
-    if not MCPTOX_DIR.exists():
+def _load_from_clone(include_flagged: bool = False) -> list[ToolTestCase]:
+    data = _read_response_file()
+    if not data:
         return []
     cases: list[ToolTestCase] = []
-    idx = 0
-    for path in sorted(MCPTOX_DIR.rglob("*.json")) + sorted(MCPTOX_DIR.rglob("*.jsonl")):
-        # Skip obvious non-data files.
-        if any(part in {"node_modules", ".git"} for part in path.parts):
-            continue
-        for record in _iter_records(path):
-            case = _normalize(record, idx)
-            if case is not None:
-                cases.append(case)
-                idx += 1
+    for server_name, server in data.get("servers", {}).items():
+        for i, inst in enumerate(server.get("malicious_instance", [])):
+            if inst.get("wrong_data", 0) != 0 and not include_flagged:
+                continue
+            parsed = _parse_tool_block(inst.get("poisoned_tool", ""))
+            if parsed is None:
+                continue
+            name, desc, schema = parsed
+            meta = inst.get("metadata", {})
+            cases.append(
+                ToolTestCase(
+                    case_id=f"mcptox-{_snake(server_name)}-{i:03d}",
+                    source="mcptox",
+                    tool_name=name,
+                    tool_description=desc,
+                    tool_schema=schema,
+                    ground_truth_label="malicious",
+                    attack_category=_snake(meta.get("security risk", "other")),
+                )
+            )
+    return cases
+
+
+def load_mcptox_clean_tools() -> list[ToolTestCase]:
+    """The REAL, unpoisoned tools of the 45 MCP servers MCPTox is built on (parsed
+    from each server's ``clean_system_promot``). These are genuine third-party
+    tool descriptions, so they make a far more honest false-positive control set
+    than hand-written benign tools. Empty when the repo is not cloned."""
+    data = _read_response_file()
+    if not data:
+        return []
+    cases: list[ToolTestCase] = []
+    seen: set[tuple[str, str]] = set()
+    for server_name, server in data.get("servers", {}).items():
+        prompt = server.get("clean_system_promot", "").replace("\\n", "\n")
+        for block in re.split(r"(?m)^(?=Tool: )", prompt):
+            if not block.startswith("Tool: "):
+                continue
+            parsed = _parse_tool_block(block)
+            if parsed is None or (server_name, parsed[0]) in seen:
+                continue
+            seen.add((server_name, parsed[0]))
+            name, desc, schema = parsed
+            cases.append(
+                ToolTestCase(
+                    case_id=f"mcptox-clean-{_snake(server_name)}-{_snake(name)}",
+                    source="benign",
+                    tool_name=name,
+                    tool_description=desc,
+                    tool_schema=schema,
+                    ground_truth_label="clean",
+                )
+            )
     return cases
 
 

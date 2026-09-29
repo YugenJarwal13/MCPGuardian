@@ -8,20 +8,26 @@ from __future__ import annotations
 from src.data.benign_control_set import load_benign_cases
 from src.data.custom_fixtures.generate_fixtures import load_custom_cases
 from src.data.dvmcp_loader import load_dvmcp_cases
-from src.data.mcptox_loader import load_mcptox_cases
+from src.data.mcptox_loader import load_mcptox_cases, load_mcptox_clean_tools
 from src.data.schemas import ToolTestCase
+
+
+def load_all_benign_cases() -> list[ToolTestCase]:
+    """Hand-written benign controls + the REAL clean tools MCPTox's 45 servers
+    ship (empty when MCPTox is not cloned)."""
+    return load_benign_cases() + load_mcptox_clean_tools()
 
 
 async def load_all_cases(prefer_live: bool = True) -> list[ToolTestCase]:
     """DVMCP (async) + MCPTox + benign + custom, concatenated."""
     dvmcp = await load_dvmcp_cases(prefer_live=prefer_live)
-    return dvmcp + load_mcptox_cases() + load_benign_cases() + load_custom_cases()
+    return dvmcp + load_mcptox_cases() + load_all_benign_cases() + load_custom_cases()
 
 
 async def load_by_source(prefer_live: bool = True) -> dict[str, list[ToolTestCase]]:
     return {
         "dvmcp": await load_dvmcp_cases(prefer_live=prefer_live),
         "mcptox": load_mcptox_cases(),
-        "benign": load_benign_cases(),
+        "benign": load_all_benign_cases(),
         "custom": load_custom_cases(),
     }

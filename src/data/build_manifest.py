@@ -24,6 +24,10 @@ async def build_manifest() -> dict:
         "dvmcp_count": len(by_source["dvmcp"]),
         "mcptox_count": len(by_source["mcptox"]),
         "benign_count": len(by_source["benign"]),
+        "benign_real_mcptox_clean_tools": sum(
+            c.case_id.startswith("mcptox-clean-") for c in by_source["benign"]),
+        "dvmcp_live": sum(not c.case_id.endswith("-offline") for c in by_source["dvmcp"]),
+        "mcptox_real": sum(not c.case_id.endswith("-offline") for c in by_source["mcptox"]),
         "custom_count": len(by_source["custom"]),
         "total": sum(len(v) for v in by_source.values()),
         "by_category": dict(sorted(by_category.items())),
