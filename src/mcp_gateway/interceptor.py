@@ -28,7 +28,7 @@ from src.adk_layer.state.session_schema import ToolFingerprint
 from src.adk_layer.state.tool_fingerprint_store import ToolFingerprintStore
 from src.audit import log_decision
 from src.config import allowlist as load_allowlist
-from src.crewai_layer.crew import run_runtime_inspection_timed, run_static_analysis
+from src.crewai_layer.crew import analyze_runtime_timed, analyze_static
 from src.crewai_layer.schemas import InspectionVerdict
 from src.data.schemas import ToolTestCase
 from src.evaluation.ablation_config import AblationConfig
@@ -112,6 +112,8 @@ class GuardianInterceptor:
         self._runtime: dict[str, InspectionVerdict] = {}
         self._anomalous: dict[str, bool] = {}
         self._scope: dict[str, Optional[str]] = {}
+        # Which engine produced each tool's verdicts: {"static": ..., "runtime": ...}.
+        self.engines: dict[str, dict[str, str]] = {}
 
     # -- Phase 3: metadata screening ------------------------------------------
     async def screen_tool_metadata(self, tools: Any) -> Any:
@@ -119,8 +121,9 @@ class GuardianInterceptor:
             return tools
         for tool in _iter_tools(tools):
             name, desc, schema = _tool_fields(tool)
-            verdict = run_static_analysis(name, desc, schema, use_llm=self._use_llm)
+            verdict, engine = analyze_static(name, desc, schema, use_llm=self._use_llm)
             self._static[name] = verdict
+            self.engines.setdefault(name, {})["static"] = engine
             self._scope[name] = ToolTestCase(
                 case_id="live", source="custom", tool_name=name, tool_description=desc,
                 tool_schema=schema, ground_truth_label="clean",
@@ -128,7 +131,7 @@ class GuardianInterceptor:
             log_decision({
                 "layer": "static", "tool_name": name, "verdict": verdict.verdict,
                 "confidence": verdict.confidence, "reasoning": verdict.reasoning,
-                "flagged_phrases": verdict.flagged_phrases,
+                "flagged_phrases": verdict.flagged_phrases, "engine": engine,
             })
         return tools
 
@@ -190,11 +193,13 @@ class GuardianInterceptor:
         text, keys = _response_text_and_keys(response)
 
         if self._ablation.enable_runtime:
-            verdict, elapsed_ms = run_runtime_inspection_timed(name, text, use_llm=self._use_llm)
+            verdict, engine, elapsed_ms = analyze_runtime_timed(name, text, use_llm=self._use_llm)
             self._runtime[name] = verdict
+            self.engines.setdefault(name, {})["runtime"] = engine
             log_decision({"layer": "runtime", "tool_name": name, "verdict": verdict.verdict,
                           "confidence": verdict.confidence, "reasoning": verdict.reasoning,
-                          "flagged_phrases": verdict.flagged_phrases, "latency_ms": round(elapsed_ms, 3)})
+                          "flagged_phrases": verdict.flagged_phrases, "engine": engine,
+                          "latency_ms": round(elapsed_ms, 3)})
         else:
             verdict = None
 

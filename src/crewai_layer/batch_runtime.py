@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 
 from src.audit import log_decision
-from src.crewai_layer.crew import run_runtime_inspection_timed
+from src.crewai_layer.crew import analyze_runtime_timed
 from src.data.datasets import load_all_cases
 from src.evaluation.metrics import false_positive_rate, precision_recall_f1
 
@@ -20,7 +20,7 @@ async def run_batch(use_llm: bool | None = None) -> dict:
     y_true, y_pred, benign_pred, latencies = [], [], [], []
 
     for case in cases:
-        verdict, elapsed_ms = run_runtime_inspection_timed(
+        verdict, engine, elapsed_ms = analyze_runtime_timed(
             case.tool_name, case.sample_response, use_llm=use_llm
         )
         latencies.append(elapsed_ms)
@@ -35,6 +35,7 @@ async def run_batch(use_llm: bool | None = None) -> dict:
                 "reasoning": verdict.reasoning,
                 "flagged_phrases": verdict.flagged_phrases,
                 "latency_ms": round(elapsed_ms, 3),
+                "engine": engine,
                 "ground_truth": case.ground_truth_label,
                 "attack_category": case.attack_category,
             }

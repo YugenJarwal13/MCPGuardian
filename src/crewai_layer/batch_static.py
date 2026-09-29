@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 
 from src.audit import log_decision
-from src.crewai_layer.crew import run_static_analysis
+from src.crewai_layer.crew import analyze_static
 from src.data.datasets import load_all_cases
 from src.evaluation.metrics import false_positive_rate, precision_recall_f1
 
@@ -21,7 +21,7 @@ async def run_batch(use_llm: bool | None = None) -> dict:
     y_true, y_pred, benign_pred = [], [], []
 
     for case in cases:
-        verdict = run_static_analysis(
+        verdict, engine = analyze_static(
             case.tool_name, case.tool_description, case.tool_schema, use_llm=use_llm
         )
         log_decision(
@@ -34,6 +34,7 @@ async def run_batch(use_llm: bool | None = None) -> dict:
                 "confidence": verdict.confidence,
                 "reasoning": verdict.reasoning,
                 "flagged_phrases": verdict.flagged_phrases,
+                "engine": engine,
                 "ground_truth": case.ground_truth_label,
                 "attack_category": case.attack_category,
             }
