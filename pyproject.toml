@@ -4,7 +4,7 @@
 pythonpath = ["."]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-filterwarnings = ["ignore::DeprecationWarning"]
+filterwarnings = ["ignore::DeprecationWarning", 'ignore:\[EXPERIMENTAL\]:UserWarning']
 
 [tool.ruff]
 line-length = 100

@@ -13,6 +13,7 @@ a faithful pass-through (the Phase 2 plumbing contract). Use
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Any, Awaitable, Callable, Optional
 
 from src.adk_layer.behavioral_anomaly_agent import BehavioralAnomalyAgent
@@ -90,6 +91,7 @@ class GuardianInterceptor:
         anomaly_agent: Optional[BehavioralAnomalyAgent] = None,
         allowlist: Optional[dict] = None,
         human_approval_callback: Optional[Callable[[str], Awaitable[bool]]] = None,
+        a2a_client: Optional[Any] = None,
     ):
         # No ablation given => legacy no-op configuration (Phase 2 contract).
         self._ablation = ablation or AblationConfig(
@@ -100,6 +102,10 @@ class GuardianInterceptor:
         self._anomaly_agent = anomaly_agent or BehavioralAnomalyAgent(use_llm=use_llm)
         self._allowlist = allowlist if allowlist is not None else load_allowlist()
         self._human = human_approval_callback
+        # When set (RemoteA2AClient on the live path), every screened call's
+        # combined verdict is shipped to the ADK case manager over A2A.
+        self._a2a = a2a_client
+        self._evidence: dict[str, list[str]] = {}
 
         # Per-tool verdict cache the enforcement gate reads at call time.
         self._static: dict[str, InspectionVerdict] = {}
@@ -155,6 +161,30 @@ class GuardianInterceptor:
                       "decision": decision.value, "blocked": False})
         return None
 
+    # -- Phase 7 / 11.3: CrewAI verdict -> A2A -> ADK case manager -------------
+    async def report_case(self, name: str, case_id: Optional[str] = None) -> Optional[Any]:
+        """Send this tool's current combined verdict to the case manager over the
+        configured A2A transport. Returns the manager's case (or None if no
+        transport is configured)."""
+        if self._a2a is None:
+            return None
+        from src.a2a_bridge.bridge import GuardianVerdictMessage, send_verdict_to_case_manager
+
+        static, runtime = self._static.get(name), self._runtime.get(name)
+        confs = [v.confidence for v in (static, runtime) if v is not None]
+        message = GuardianVerdictMessage(
+            case_id=case_id or f"{name}-{uuid.uuid4().hex[:8]}",
+            tool_name=name,
+            static_verdict=static.verdict if static else None,
+            runtime_verdict=runtime.verdict if runtime else None,
+            behavioral_anomaly=self._anomalous.get(name, False),
+            combined_confidence=max(confs) if confs else 0.0,
+            evidence=[*(static.flagged_phrases if static else []),
+                      *(runtime.flagged_phrases if runtime else []),
+                      *self._evidence.get(name, [])],
+        )
+        return await send_verdict_to_case_manager(message, self._a2a)
+
     # -- Phase 4/5: response screening ----------------------------------------
     async def screen_tool_response(self, name: str, response: Any) -> Any:
         text, keys = _response_text_and_keys(response)
@@ -173,6 +203,9 @@ class GuardianInterceptor:
             fp, report = await self._anomaly_agent.analyze_async(fp, text, keys, latency_ms=0.0)
             self._store.update(fp)
             self._anomalous[name] = report.is_anomalous
+            if report.is_anomalous:
+                self._evidence[name] = [f"z={report.evidence['z_score']}",
+                                        *(f"new_key:{k}" for k in report.evidence["new_keys"])]
             log_decision({"layer": "behavioral", "tool_name": name,
                           "anomalous": report.is_anomalous, "reasoning": report.explanation,
                           "evidence": report.evidence, "engine": report.engine,
