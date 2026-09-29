@@ -56,3 +56,28 @@ def test_length_spike_alone_triggers_anomaly():
     )
     assert anomalous
     assert evidence["z_score"] > 3.0
+
+
+async def test_adk_judge_can_overrule_statistics_offline():
+    """The ADK judgment layer runs only after the stats flag drift, and its
+    verdict (here: scripted 'benign drift') is what gets reported."""
+    from google.adk.models.base_llm import BaseLlm
+    from google.adk.models.llm_response import LlmResponse
+    from google.genai import types
+
+    from src.adk_layer.behavioral_anomaly_agent import BehavioralAnomalyAgent
+
+    class Judge(BaseLlm):
+        async def generate_content_async(self, llm_request, stream=False):
+            text = '{"escalate": false, "explanation": "Longer but equivalent answer."}'
+            yield LlmResponse(content=types.Content(role="model", parts=[types.Part(text=text)]))
+
+    agent = BehavioralAnomalyAgent(use_llm=True, model=Judge(model="scripted"))
+    fp = ToolFingerprint(tool_id="judge_tool")
+    for _ in range(10):
+        fp, report = await agent.analyze_async(fp, "short", {"v"}, 10)
+        assert report.engine == "heuristic"      # judge not consulted on steady state
+    fp, report = await agent.analyze_async(fp, "x" * 5000, {"v"}, 10)
+    assert report.statistical_anomaly and not report.is_anomalous
+    assert report.engine == "llm"
+    assert "equivalent" in report.explanation

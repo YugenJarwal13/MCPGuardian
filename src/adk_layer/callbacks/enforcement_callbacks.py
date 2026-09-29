@@ -5,13 +5,25 @@ decision, then enforce it for real (raise, don't just log). The sensitive-scope
 check runs BEFORE and INDEPENDENTLY of the AI verdicts — defense in depth: even
 if every inspection agent is fooled, a tool requesting a sensitive scope still
 cannot auto-execute.
+
+``combine_verdicts`` / ``enforce`` stay pure functions. ``make_guardian_before_tool_callback``
+wraps them in Google ADK's ``before_tool_callback`` hook so any ADK ``LlmAgent``
+holding MCP tools gets the same hard block from ADK's own tool-dispatch
+machinery: the callback raises ``GuardianBlockedError`` before ADK invokes the
+tool, so the underlying MCP ``session.call_tool()`` never fires.
 """
 from __future__ import annotations
 
 from enum import Enum
-from typing import Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 from src.crewai_layer.schemas import InspectionVerdict
+
+try:  # ADK is a hard requirement, but keep the pure policy importable without it.
+    from google.adk.tools.base_tool import BaseTool
+    from google.adk.tools.tool_context import ToolContext
+except ImportError:  # pragma: no cover
+    BaseTool = ToolContext = Any  # type: ignore[misc,assignment]
 
 
 class GuardianDecision(str, Enum):
@@ -79,3 +91,34 @@ async def cli_human_approval(tool_name: str) -> bool:
     course demo."""
     response = input(f"[GUARDIAN] Tool '{tool_name}' flagged for review. Approve? (y/n): ")
     return response.strip().lower() == "y"
+
+
+# --- Google ADK integration -------------------------------------------------
+# verdict_source(tool_name) -> kwargs for combine_verdicts minus the allowlist:
+#   {"static_verdict", "runtime_verdict", "is_behaviorally_anomalous", "requested_scope"}
+VerdictSource = Callable[[str], dict]
+
+
+def make_guardian_before_tool_callback(
+    verdict_source: VerdictSource,
+    allowlist: dict,
+    human_approval_callback: Optional[Callable[[str], Awaitable[bool]]] = None,
+):
+    """Build an ADK ``before_tool_callback`` enforcing the Guardian policy.
+
+    ADK calls it with ``(tool, args, tool_context)`` right before dispatching a
+    tool. We record the decision in the ADK session state (so it is part of the
+    session's durable history) and then ``enforce`` it — a BLOCK or a denied
+    ESCALATE raises ``GuardianBlockedError`` and the tool body never runs.
+    Returning ``None`` lets ADK proceed with the real call.
+    """
+
+    async def guardian_before_tool_callback(
+        tool: BaseTool, args: dict[str, Any], tool_context: ToolContext
+    ) -> Optional[dict]:
+        decision = combine_verdicts(allowlist=allowlist, **verdict_source(tool.name))
+        tool_context.state[f"guardian:decision:{tool.name}"] = decision.value
+        await enforce(decision, tool.name, human_approval_callback=human_approval_callback)
+        return None
+
+    return guardian_before_tool_callback

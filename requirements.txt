@@ -1,6 +1,6 @@
 # Core agent frameworks
 crewai>=0.80
-google-adk[mcp,a2a]>=0.3
+google-adk[mcp,a2a]>=2.9,<3   # 2.x API (SqliteSessionService, to_a2a) is used directly
 mcp>=1.2
 
 # Config / models

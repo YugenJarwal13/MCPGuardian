@@ -21,6 +21,7 @@ from src.adk_layer.callbacks.enforcement_callbacks import (
     GuardianDecision,
     combine_verdicts,
     enforce,
+    make_guardian_before_tool_callback,
 )
 from src.adk_layer.state.session_schema import ToolFingerprint
 from src.adk_layer.state.tool_fingerprint_store import ToolFingerprintStore
@@ -126,14 +127,24 @@ class GuardianInterceptor:
         return tools
 
     # -- Phase 6: pre-call enforcement gate -----------------------------------
-    async def pre_call_check(self, name: str, arguments: dict, session: Any) -> Optional[Any]:
-        decision = combine_verdicts(
-            static_verdict=self._static.get(name),
-            runtime_verdict=self._runtime.get(name),
-            is_behaviorally_anomalous=self._anomalous.get(name, False),
-            requested_scope=self._scope.get(name),
-            allowlist=self._allowlist,
+    def verdicts_for(self, name: str) -> dict:
+        """Everything ``combine_verdicts`` needs for one tool (minus allowlist)."""
+        return {
+            "static_verdict": self._static.get(name),
+            "runtime_verdict": self._runtime.get(name),
+            "is_behaviorally_anomalous": self._anomalous.get(name, False),
+            "requested_scope": self._scope.get(name),
+        }
+
+    def adk_before_tool_callback(self):
+        """The same gate as ``pre_call_check``, as a Google ADK
+        ``before_tool_callback`` (see ``src/adk_layer/guarded_agent.py``)."""
+        return make_guardian_before_tool_callback(
+            self.verdicts_for, self._allowlist, human_approval_callback=self._human
         )
+
+    async def pre_call_check(self, name: str, arguments: dict, session: Any) -> Optional[Any]:
+        decision = combine_verdicts(allowlist=self._allowlist, **self.verdicts_for(name))
         try:
             await enforce(decision, name, human_approval_callback=self._human)
         except GuardianBlockedError as exc:
@@ -159,12 +170,13 @@ class GuardianInterceptor:
 
         if self._ablation.enable_behavioral and self._store is not None:
             fp = self._store.get(name)
-            fp, report = self._anomaly_agent.analyze(fp, text, keys, latency_ms=0.0)
+            fp, report = await self._anomaly_agent.analyze_async(fp, text, keys, latency_ms=0.0)
             self._store.update(fp)
             self._anomalous[name] = report.is_anomalous
             log_decision({"layer": "behavioral", "tool_name": name,
                           "anomalous": report.is_anomalous, "reasoning": report.explanation,
-                          "evidence": report.evidence})
+                          "evidence": report.evidence, "engine": report.engine,
+                          "statistical_anomaly": report.statistical_anomaly})
 
         # Post-response enforcement: block/redact a malicious response.
         decision = combine_verdicts(
