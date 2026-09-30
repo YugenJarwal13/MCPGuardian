@@ -18,7 +18,7 @@ from src.audit import log_decision
 Stage = Literal["connect", "list_tools", "static_check", "tool_call", "runtime_check",
                 "behavioral_check", "a2a_hop", "enforcement", "done"]
 Status = Literal["started", "passed", "flagged", "blocked", "escalate", "error"]
-Engine = Literal["llm", "heuristic", "heuristic_fallback", "none"]
+Engine = Literal["llm", "heuristic", "heuristic_fallback", "timeout", "none"]
 
 STAGES: list[str] = ["connect", "list_tools", "static_check", "tool_call", "runtime_check",
                      "behavioral_check", "a2a_hop", "enforcement", "done"]

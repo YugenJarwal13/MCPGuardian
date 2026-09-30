@@ -10,7 +10,12 @@ const ICONS = {
   error: "⚠",
 };
 
-const ENGINE_LABEL = { llm: "LLM", heuristic: "heuristic", heuristic_fallback: "LLM failed → heuristic" };
+const ENGINE_LABEL = {
+  llm: "LLM",
+  heuristic: "heuristic",
+  heuristic_fallback: "LLM failed → heuristic",
+  timeout: "LLM timed out → escalate",
+};
 
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

@@ -191,8 +191,12 @@ class BehavioralAnomalyAgent:
             f"Statistical evidence: {json.dumps(evidence)}\n\n"
             f"PREVIOUS response:\n{previous[:2000]}\n\nCURRENT response:\n{current[:2000]}"
         )
+        budget = float(settings().get("timeouts", {}).get("runtime_inspection_s", 30))
         try:
-            return _parse_judgement(await run_agent_once(self._agent, prompt))
+            # On timeout/failure the statistical decision stands (an anomaly then
+            # still escalates), so a hung judge can never turn a flag into an allow.
+            return _parse_judgement(
+                await asyncio.wait_for(run_agent_once(self._agent, prompt), budget))
         except Exception:
             return None
 

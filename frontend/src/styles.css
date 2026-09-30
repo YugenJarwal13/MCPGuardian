@@ -139,7 +139,7 @@ button.ghost:hover:not(:disabled) { background: var(--panel-2); }
 .engine { font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); }
 .engine.llm { border-color: var(--violet); color: var(--violet); }
 .engine.heuristic { color: var(--muted); }
-.engine.heuristic_fallback { border-color: var(--amber); color: var(--amber); }
+.engine.heuristic_fallback, .engine.timeout { border-color: var(--amber); color: var(--amber); }
 
 .approval { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
 .approval .approve { background: var(--green); border-color: var(--green); color: #07130a; font-weight: 600; }

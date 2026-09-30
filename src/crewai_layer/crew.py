@@ -13,12 +13,16 @@ Phase 11.4 — which path ACTUALLY ran is now explicit. ``analyze_static`` /
     "heuristic"           the deterministic path was chosen (use_llm False / no key)
     "heuristic_fallback"  the LLM path was attempted but failed (exception or
                           unparseable output) and the heuristic answered instead
+    "timeout"             the LLM call exceeded ``timeouts.*_s`` in settings.yaml;
+                          the verdict is ``suspicious`` so the policy ESCALATES
+                          (an inconclusive agent must never silently allow)
 
 Every audit record carries this value, so heuristic numbers can never be
 reported as LLM numbers by accident.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import os
 import time
@@ -31,6 +35,12 @@ log = logging.getLogger(__name__)
 ENGINE_LLM = "llm"
 ENGINE_HEURISTIC = "heuristic"
 ENGINE_FALLBACK = "heuristic_fallback"
+ENGINE_TIMEOUT = "timeout"
+
+# Agent calls run on this pool so they can be abandoned on timeout. A timed-out
+# call keeps its worker thread until the provider returns (Python cannot kill a
+# thread); the pool size bounds how many can pile up.
+_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=8, thread_name_prefix="crew")
 
 _PROVIDER_KEY_ENV = {
     "openai": "OPENAI_API_KEY",
@@ -83,6 +93,35 @@ def _crewai_llm():
     return LLM(model=model, **kwargs)
 
 
+def _timeout_s(kind: str) -> float:
+    """``timeouts.static_analysis_s`` / ``timeouts.runtime_inspection_s``."""
+    from src.config import settings
+
+    return float(settings().get("timeouts", {}).get(f"{kind}_s", 30))
+
+
+def _timeout_verdict(kind: str, seconds: float) -> InspectionVerdict:
+    return InspectionVerdict(
+        verdict="suspicious", confidence=0.0,
+        reasoning=(f"The {kind.replace('_', ' ')} agent did not answer within {seconds:g}s. "
+                   "An inconclusive inspection is escalated for human review rather "
+                   "than silently allowed."),
+    )
+
+
+def _kickoff_with_timeout(kind: str, agent, task_builder, *args):
+    """Run ``_kickoff`` with the configured wall-clock budget. Returns
+    ``(verdict_or_None, timed_out)``; exceptions propagate to the caller."""
+    seconds = _timeout_s(kind)
+    future = _POOL.submit(_kickoff, agent, task_builder, *args)
+    try:
+        return future.result(timeout=seconds), False
+    except concurrent.futures.TimeoutError:
+        future.cancel()
+        log.warning("%s agent timed out after %ss", kind, seconds)
+        return None, True
+
+
 def _kickoff(agent, task_builder, *args) -> InspectionVerdict | None:
     from crewai import Crew
 
@@ -107,11 +146,14 @@ def analyze_static(
     from src.crewai_layer.tasks.static_analysis_task import build_static_analysis_task
 
     try:
-        verdict = _kickoff(static_analysis_agent, build_static_analysis_task,
-                           tool_name, tool_description, tool_schema)
+        verdict, timed_out = _kickoff_with_timeout(
+            "static_analysis", static_analysis_agent, build_static_analysis_task,
+            tool_name, tool_description, tool_schema)
     except Exception as exc:  # network/provider errors must not crash the gateway
         log.warning("static LLM path failed for %s: %s", tool_name, exc)
-        verdict = None
+        verdict, timed_out = None, False
+    if timed_out:
+        return _timeout_verdict("static_analysis", _timeout_s("static_analysis")), ENGINE_TIMEOUT
     if verdict is None:
         return static_heuristic(tool_name, tool_description, tool_schema), ENGINE_FALLBACK
     return verdict, ENGINE_LLM
@@ -130,11 +172,15 @@ def analyze_runtime(
     from src.crewai_layer.tasks.runtime_inspection_task import build_runtime_inspection_task
 
     try:
-        verdict = _kickoff(runtime_inspection_agent, build_runtime_inspection_task,
-                           tool_name, tool_response)
+        verdict, timed_out = _kickoff_with_timeout(
+            "runtime_inspection", runtime_inspection_agent, build_runtime_inspection_task,
+            tool_name, tool_response)
     except Exception as exc:
         log.warning("runtime LLM path failed for %s: %s", tool_name, exc)
-        verdict = None
+        verdict, timed_out = None, False
+    if timed_out:
+        return (_timeout_verdict("runtime_inspection", _timeout_s("runtime_inspection")),
+                ENGINE_TIMEOUT)
     if verdict is None:
         return runtime_heuristic(tool_name, tool_response), ENGINE_FALLBACK
     return verdict, ENGINE_LLM
