@@ -5,13 +5,19 @@ GuardedMCPClient. We point it at four in-process servers in turn and watch the
 Guardian catch each attack class mid-task. Runs fully offline (deterministic
 detectors); set credentials + use_llm=True to drive the LLM-backed agents.
 
-    python -m src.demo_agent.run_demo
+    python -m src.demo_agent.run_demo                 # offline fixtures
+    python -m src.demo_agent.run_demo --live          # real DVMCP servers (ports 9001-9010)
+    python -m src.demo_agent.run_demo --live --interactive   # you approve/deny escalations
 
-The narrated trace doubles as the live viva sequence (see docs/viva_demo_script.md).
+``--live`` needs the lab running (``python scripts/run_dvmcp_native.py``). The
+live UI (``scripts/run_api.sh`` + ``scripts/run_frontend.sh``) is the primary
+viva demo; this terminal version is the fallback (see docs/viva_demo_script.md).
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
+import contextlib
 
 from src.adk_layer.state.tool_fingerprint_store import ToolFingerprintStore
 from src.demo_agent.agent_config import (
@@ -95,6 +101,113 @@ async def scenario_rug_pull() -> None:
     print("  time-to-detection: 1 call (immediate).")
 
 
+# --------------------------------------------------------------------------- live
+DVMCP_HOST = "127.0.0.1"
+
+
+@contextlib.asynccontextmanager
+async def _live_session(port: int):
+    from mcp import ClientSession
+    from mcp.client.sse import sse_client
+
+    async with sse_client(f"http://{DVMCP_HOST}:{port}/sse") as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            yield session
+
+
+def _live_interceptor(interactive: bool) -> GuardianInterceptor:
+    from src.adk_layer.callbacks.enforcement_callbacks import cli_human_approval
+
+    async def reviewer_approves(tool_name: str) -> bool:
+        print(f"  [reviewer] '{tool_name}' escalated for human approval -> APPROVED "
+              "(scripted; use --interactive to decide yourself)")
+        return True
+
+    return GuardianInterceptor(
+        ablation=AblationConfig(), use_llm=None,   # LLM if configured, else heuristics
+        fingerprint_store=ToolFingerprintStore(db_path=":memory:"),
+        human_approval_callback=cli_human_approval if interactive else reviewer_approves,
+    )
+
+
+def _text(result) -> str:
+    if isinstance(result, dict):
+        return result["content"][0]["text"]
+    return "\n".join(getattr(c, "text", str(c)) for c in result.content)
+
+
+async def live_clean(interactive: bool) -> None:
+    _hr("LIVE 1. Challenge 6 server, benign tool - read a public announcement")
+    interceptor = _live_interceptor(interactive)
+    async with _live_session(9006) as session:
+        client = GuardedMCPClient(session, interceptor)
+        await client.list_tools()
+        v = interceptor._static["read_document"]
+        print(f"  static verdict for read_document: {v.verdict} "
+              f"[{interceptor.engines['read_document']['static']}]")
+        result = await client.call_tool("read_document", {"document_name": "public_announcement.txt"})
+        print("  ->", "BLOCKED" if _blocked(result) else "ALLOWED", "|", " ".join(_text(result).split())[:70])
+
+
+async def live_poisoned_metadata(interactive: bool) -> None:
+    _hr("LIVE 2. Challenge 10 - real <IMPORTANT> poisoned description, blocked pre-call")
+    interceptor = _live_interceptor(interactive)
+    async with _live_session(9010) as session:
+        client = GuardedMCPClient(session, interceptor)
+        await client.list_tools()
+        v = interceptor._static["get_user_profile"]
+        print(f"  static verdict for get_user_profile: {v.verdict} ({v.confidence:.0%}) "
+              f"[{interceptor.engines['get_user_profile']['static']}]")
+        print(f"  flagged: {v.flagged_phrases}")
+        result = await client.call_tool("get_user_profile", {"username": "alice"})
+        print("  attempting the call ->", "BLOCKED [OK]" if _blocked(result) else "allowed [FAIL]")
+
+
+async def live_poisoned_response(interactive: bool) -> None:
+    from src.api.servers import CH6_DEMO_DOCUMENT
+
+    _hr("LIVE 3. Challenge 6 - injection echoed back in a real tool response")
+    interceptor = _live_interceptor(interactive)
+    async with _live_session(9006) as session:
+        client = GuardedMCPClient(session, interceptor)
+        await client.list_tools()
+        print("  metadata verdict:", interceptor._static["upload_and_process_document"].verdict,
+              "(the tool writes files, so policy asks a human first)")
+        result = await client.call_tool("upload_and_process_document",
+                                        {"document_name": "q3_report.txt", "content": CH6_DEMO_DOCUMENT})
+        rv = interceptor._runtime.get("upload_and_process_document")
+        if rv is not None:
+            print(f"  the call executed; response auditor verdict: {rv.verdict} "
+                  f"[{interceptor.engines['upload_and_process_document']['runtime']}] "
+                  f"flagged={rv.flagged_phrases}")
+        print("  returning to the agent ->", "BLOCKED [OK]" if _blocked(result) else "allowed [FAIL]")
+
+
+async def live_known_gap(interactive: bool) -> None:
+    _hr("LIVE 4. Challenge 2 - real tool poisoning (known gap for the heuristic path)")
+    interceptor = _live_interceptor(interactive)
+    async with _live_session(9002) as session:
+        client = GuardedMCPClient(session, interceptor)
+        await client.list_tools()
+        v = interceptor._static["get_company_data"]
+        engine = interceptor.engines["get_company_data"]["static"]
+        print(f"  static verdict for get_company_data: {v.verdict} [{engine}]")
+        if v.verdict == "clean":
+            print("  -> MISSED. The regex heuristic has no rule for this <IMPORTANT> wording;")
+            print("     this is the case the LLM agent (v2 prompt) is meant to catch.")
+
+
+async def main_live(interactive: bool) -> None:
+    for scenario in (live_clean, live_poisoned_metadata, live_poisoned_response, live_known_gap):
+        try:
+            await scenario(interactive)
+        except OSError as exc:
+            print(f"  lab not reachable ({exc}); start it: python scripts/run_dvmcp_native.py")
+            return
+    _hr("Live demo complete - see logs/audit_trail.jsonl and the Streamlit dashboard")
+
+
 async def main() -> None:
     await scenario_clean()
     await scenario_poisoned_metadata()
@@ -105,4 +218,8 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--live", action="store_true", help="use the running DVMCP lab")
+    ap.add_argument("--interactive", action="store_true", help="approve escalations yourself")
+    args = ap.parse_args()
+    asyncio.run(main_live(args.interactive) if args.live else main())
