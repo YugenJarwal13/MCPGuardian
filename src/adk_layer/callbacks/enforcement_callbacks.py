@@ -53,12 +53,15 @@ def combine_verdicts(
 ) -> GuardianDecision:
     worst = _worst(static_verdict, runtime_verdict)
 
-    sensitive = [s["scope"] for s in allowlist.get("always_require_human_approval", [])]
-    if requested_scope in sensitive:
-        # Sensitive scopes ALWAYS require a human, regardless of AI verdict.
-        return GuardianDecision.ESCALATE
+    # A malicious verdict always blocks. The scope rule below may only make a
+    # decision STRICTER — it must never downgrade a BLOCK to an ESCALATE that a
+    # human could then approve (that let known-malicious responses be released).
     if worst in allowlist.get("auto_block_on_verdict", []):
         return GuardianDecision.BLOCK
+    sensitive = [s["scope"] for s in allowlist.get("always_require_human_approval", [])]
+    if requested_scope in sensitive:
+        # Sensitive scopes ALWAYS require a human, even when every verdict is clean.
+        return GuardianDecision.ESCALATE
     if worst in allowlist.get("escalate_on_verdict", []) or is_behaviorally_anomalous:
         return GuardianDecision.ESCALATE
     return GuardianDecision.ALLOW

@@ -43,9 +43,10 @@ def _v(label: str) -> InspectionVerdict:
         # Sensitive scope overrides even a clean/clean verdict.
         ("clean", "clean", False, "filesystem_write", GuardianDecision.ESCALATE),
         ("clean", "clean", False, "credential_access", GuardianDecision.ESCALATE),
-        # Sensitive scope escalates even when a verdict would otherwise BLOCK?
-        # No: scope check runs first and returns ESCALATE (human decides).
-        ("malicious", "clean", False, "filesystem_write", GuardianDecision.ESCALATE),
+        # The scope rule may only tighten a decision: malicious + sensitive scope
+        # still BLOCKS (it must not become an escalation a human could approve).
+        ("malicious", "clean", False, "filesystem_write", GuardianDecision.BLOCK),
+        ("clean", "malicious", False, "network_egress", GuardianDecision.BLOCK),
     ],
 )
 def test_combine_verdicts_matrix(static, runtime, anomalous, scope, expected):
