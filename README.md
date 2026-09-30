@@ -63,26 +63,52 @@ Run the deterministic test suite (no LLM keys required):
 pytest tests -q
 ```
 
-Bring up the DVMCP challenge lab (Docker required) and the benchmark:
+Bring up the DVMCP challenge lab and the benchmark:
 
 ```bash
-bash scripts/setup_dvmcp.sh
 bash scripts/setup_mcptox.sh
+bash scripts/setup_dvmcp.sh                 # clones DVMCP; builds/runs Docker if present
+python scripts/run_dvmcp_native.py          # no Docker: same ports 9001-9010, 127.0.0.1 only
 ```
 
-Launch the dashboard:
+The native launcher serves upstream's poisoned `server.py` challenge modules by
+default (`--variant sse` reproduces the Docker image, whose tool descriptions are
+simplified and carry no poison).
+
+Launch the historical audit-log dashboard:
 
 ```bash
 streamlit run src/dashboard/app.py
 ```
 
+## Running the live UI
+
+Pick a clean or poisoned MCP server, run one tool call, and watch every stage
+stream in live: static check → policy gate / tool call → runtime check →
+behavioural check → A2A hop → enforcement. Escalations render Approve/Deny
+buttons (human in the loop over the WebSocket).
+
+```bash
+python scripts/run_dvmcp_native.py   # terminal 1 — live DVMCP challenges (optional)
+bash scripts/run_api.sh              # terminal 2 — FastAPI + WS on :8000 (+ A2A case manager)
+bash scripts/run_frontend.sh         # terminal 3 — React/Vite on http://localhost:5173
+```
+
+In-process fixture servers (clean reference, tricky-but-clean data, offline
+attack stand-ins) work without the lab. Each stage shows an engine badge —
+`LLM`, `heuristic`, or `LLM failed → heuristic` — so it is always visible which
+detector actually decided. Every streamed event is also written to
+`logs/audit_trail.jsonl` (layer `pipeline_event`), so the Streamlit dashboard
+shows the same runs. `npm --prefix frontend run build` lets the API serve the UI
+itself at http://127.0.0.1:8000.
+
 ## Test data & ground truth
 
 | Source | Cases | Label | Notes |
 |---|---|---|---|
-| DVMCP | 10 challenges → 10+ tools | `malicious` | 1:1 port→challenge→attack-category mapping (see `dvmcp_loader.py`) |
-| MCPTox | ~1,312 | `malicious` | attack-only dataset; 10 risk categories |
-| Benign control | 5–10 | `clean` | hand-assembled; the only way to measure false positives |
+| DVMCP | 10 challenges → 31 live tools | `malicious` | 1:1 port→challenge→attack-category mapping (see `dvmcp_loader.py`) |
+| MCPTox | 1,312 | `malicious` | attack-only; 11 risk scopes; 36 author-flagged rows excluded |
+| Benign control | 369 | `clean` | 362 real unpoisoned tools from MCPTox's 45 servers + 7 hand-written |
 | Custom | backup only | either | added only if evaluation reveals a gap |
 
 ## Status

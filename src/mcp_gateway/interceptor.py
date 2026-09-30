@@ -12,6 +12,7 @@ a faithful pass-through (the Phase 2 plumbing contract). Use
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from typing import Any, Awaitable, Callable, Optional
@@ -121,7 +122,10 @@ class GuardianInterceptor:
             return tools
         for tool in _iter_tools(tools):
             name, desc, schema = _tool_fields(tool)
-            verdict, engine = analyze_static(name, desc, schema, use_llm=self._use_llm)
+            # Detectors are sync (and an LLM call can take seconds): run them off
+            # the event loop so streaming callers stay responsive.
+            verdict, engine = await asyncio.to_thread(
+                analyze_static, name, desc, schema, self._use_llm)
             self._static[name] = verdict
             self.engines.setdefault(name, {})["static"] = engine
             self._scope[name] = ToolTestCase(
@@ -153,7 +157,7 @@ class GuardianInterceptor:
         )
 
     async def pre_call_check(self, name: str, arguments: dict, session: Any) -> Optional[Any]:
-        decision = combine_verdicts(allowlist=self._allowlist, **self.verdicts_for(name))
+        decision = self.current_decision(name)
         try:
             await enforce(decision, name, human_approval_callback=self._human)
         except GuardianBlockedError as exc:
@@ -189,42 +193,55 @@ class GuardianInterceptor:
         return await send_verdict_to_case_manager(message, self._a2a)
 
     # -- Phase 4/5: response screening ----------------------------------------
+    # Split into public sub-steps so a caller that streams progress (src/api)
+    # can report each stage as it happens without duplicating any logic.
+    async def inspect_response_runtime(self, name: str, text: str):
+        """Runtime (CrewAI) inspection of a response. Returns
+        ``(verdict, engine, elapsed_ms)`` or ``None`` when the layer is off."""
+        if not self._ablation.enable_runtime:
+            return None
+        verdict, engine, elapsed_ms = await asyncio.to_thread(
+            analyze_runtime_timed, name, text, self._use_llm)
+        self._runtime[name] = verdict
+        self.engines.setdefault(name, {})["runtime"] = engine
+        log_decision({"layer": "runtime", "tool_name": name, "verdict": verdict.verdict,
+                      "confidence": verdict.confidence, "reasoning": verdict.reasoning,
+                      "flagged_phrases": verdict.flagged_phrases, "engine": engine,
+                      "latency_ms": round(elapsed_ms, 3)})
+        return verdict, engine, elapsed_ms
+
+    async def inspect_response_behavioral(self, name: str, text: str, keys: set[str]):
+        """Behavioural fingerprint update + (ADK) judgment. Returns the
+        ``AnomalyReport`` or ``None`` when the layer is off."""
+        if not (self._ablation.enable_behavioral and self._store is not None):
+            return None
+        fp = self._store.get(name)
+        fp, report = await self._anomaly_agent.analyze_async(fp, text, keys, latency_ms=0.0)
+        self._store.update(fp)
+        self._anomalous[name] = report.is_anomalous
+        if report.is_anomalous:
+            self._evidence[name] = [f"z={report.evidence['z_score']}",
+                                    *(f"new_key:{k}" for k in report.evidence["new_keys"])]
+        log_decision({"layer": "behavioral", "tool_name": name,
+                      "anomalous": report.is_anomalous, "reasoning": report.explanation,
+                      "evidence": report.evidence, "engine": report.engine,
+                      "statistical_anomaly": report.statistical_anomaly,
+                      "n_samples": fp.n_samples})
+        return report
+
+    def current_decision(self, name: str, include_scope: bool = True) -> GuardianDecision:
+        verdicts = self.verdicts_for(name)
+        if not include_scope:
+            verdicts["requested_scope"] = None
+        return combine_verdicts(allowlist=self._allowlist, **verdicts)
+
     async def screen_tool_response(self, name: str, response: Any) -> Any:
         text, keys = _response_text_and_keys(response)
-
-        if self._ablation.enable_runtime:
-            verdict, engine, elapsed_ms = analyze_runtime_timed(name, text, use_llm=self._use_llm)
-            self._runtime[name] = verdict
-            self.engines.setdefault(name, {})["runtime"] = engine
-            log_decision({"layer": "runtime", "tool_name": name, "verdict": verdict.verdict,
-                          "confidence": verdict.confidence, "reasoning": verdict.reasoning,
-                          "flagged_phrases": verdict.flagged_phrases, "engine": engine,
-                          "latency_ms": round(elapsed_ms, 3)})
-        else:
-            verdict = None
-
-        if self._ablation.enable_behavioral and self._store is not None:
-            fp = self._store.get(name)
-            fp, report = await self._anomaly_agent.analyze_async(fp, text, keys, latency_ms=0.0)
-            self._store.update(fp)
-            self._anomalous[name] = report.is_anomalous
-            if report.is_anomalous:
-                self._evidence[name] = [f"z={report.evidence['z_score']}",
-                                        *(f"new_key:{k}" for k in report.evidence["new_keys"])]
-            log_decision({"layer": "behavioral", "tool_name": name,
-                          "anomalous": report.is_anomalous, "reasoning": report.explanation,
-                          "evidence": report.evidence, "engine": report.engine,
-                          "statistical_anomaly": report.statistical_anomaly})
+        await self.inspect_response_runtime(name, text)
+        await self.inspect_response_behavioral(name, text, keys)
 
         # Post-response enforcement: block/redact a malicious response.
-        decision = combine_verdicts(
-            static_verdict=self._static.get(name),
-            runtime_verdict=self._runtime.get(name),
-            is_behaviorally_anomalous=self._anomalous.get(name, False),
-            requested_scope=self._scope.get(name),
-            allowlist=self._allowlist,
-        )
-        if decision == GuardianDecision.BLOCK:
+        if self.current_decision(name) == GuardianDecision.BLOCK:
             log_decision({"layer": "enforcement", "tool_name": name, "decision": "block",
                           "blocked": True, "phase": "response", "reason": "malicious response"})
             return _refusal(name, "Response blocked: injected instruction detected.")

@@ -13,8 +13,11 @@ pandas>=2.1
 scikit-learn>=1.4
 matplotlib>=3.8
 
-# Dashboard
+# Dashboard + live UI API
 streamlit>=1.30
+fastapi>=0.110
+uvicorn[standard]>=0.29
+httpx>=0.27            # A2A client + FastAPI TestClient
 
 # Infra / testing
 docker>=7.0

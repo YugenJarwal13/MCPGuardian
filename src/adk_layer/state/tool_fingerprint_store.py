@@ -18,7 +18,9 @@ class ToolFingerprintStore:
     def __init__(self, db_path: str | Path = "logs/fingerprints.db"):
         if db_path not in (":memory:",):
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(db_path))
+        # Writes are serialized by the caller (one pipeline per tool at a time);
+        # allow use from worker threads (the API resets stores from its handler thread).
+        self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS fingerprints (tool_id TEXT PRIMARY KEY, data TEXT)"
         )
