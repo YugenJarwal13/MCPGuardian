@@ -1,0 +1,136 @@
+{
+  "run": "deterministic",
+  "results": {
+    "static_only": {
+      "detectors": {
+        "precision": 0.9776951672862454,
+        "recall": 0.39166046165301566,
+        "f1": 0.5592769803296119,
+        "tp": 526,
+        "fp": 12,
+        "fn": 817,
+        "n_cases": 1712,
+        "false_positive_rate": 0.032520325203252036,
+        "false_positive_rate_real_tools": 0.03314917127071823,
+        "dvmcp_recall": 0.16129032258064516,
+        "mcptox_recall": 0.39710365853658536,
+        "decisions": {
+          "clean": 1174,
+          "suspicious": 65,
+          "malicious": 473
+        }
+      },
+      "policy": {
+        "precision": 0.9279279279279279,
+        "recall": 0.6135517498138496,
+        "f1": 0.738682205289108,
+        "tp": 824,
+        "fp": 64,
+        "fn": 519,
+        "n_cases": 1712,
+        "false_positive_rate": 0.17344173441734417,
+        "false_positive_rate_real_tools": 0.17679558011049723,
+        "dvmcp_recall": 0.3225806451612903,
+        "mcptox_recall": 0.6204268292682927,
+        "decisions": {
+          "clean": 824,
+          "suspicious": 644,
+          "malicious": 244
+        }
+      }
+    },
+    "runtime_only": {
+      "detectors": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 1343,
+        "n_cases": 1712,
+        "false_positive_rate": 0.0,
+        "false_positive_rate_real_tools": 0.0,
+        "dvmcp_recall": 0.0,
+        "mcptox_recall": 0.0,
+        "decisions": {
+          "clean": 1712
+        }
+      },
+      "policy": {
+        "precision": 0.9020217729393468,
+        "recall": 0.43186895011169024,
+        "f1": 0.5840886203423968,
+        "tp": 580,
+        "fp": 63,
+        "fn": 763,
+        "n_cases": 1712,
+        "false_positive_rate": 0.17073170731707318,
+        "false_positive_rate_real_tools": 0.17403314917127072,
+        "dvmcp_recall": 0.3225806451612903,
+        "mcptox_recall": 0.4344512195121951,
+        "decisions": {
+          "clean": 1069,
+          "suspicious": 643
+        }
+      }
+    },
+    "combined": {
+      "detectors": {
+        "precision": 0.9776951672862454,
+        "recall": 0.39166046165301566,
+        "f1": 0.5592769803296119,
+        "tp": 526,
+        "fp": 12,
+        "fn": 817,
+        "n_cases": 1712,
+        "false_positive_rate": 0.032520325203252036,
+        "false_positive_rate_real_tools": 0.03314917127071823,
+        "dvmcp_recall": 0.16129032258064516,
+        "mcptox_recall": 0.39710365853658536,
+        "decisions": {
+          "clean": 1174,
+          "suspicious": 65,
+          "malicious": 473
+        }
+      },
+      "policy": {
+        "precision": 0.9279279279279279,
+        "recall": 0.6135517498138496,
+        "f1": 0.738682205289108,
+        "tp": 824,
+        "fp": 64,
+        "fn": 519,
+        "n_cases": 1712,
+        "false_positive_rate": 0.17344173441734417,
+        "false_positive_rate_real_tools": 0.17679558011049723,
+        "dvmcp_recall": 0.3225806451612903,
+        "mcptox_recall": 0.6204268292682927,
+        "decisions": {
+          "clean": 824,
+          "suspicious": 644,
+          "malicious": 244
+        }
+      }
+    }
+  },
+  "engines": {
+    "static_engines": {
+      "heuristic": 1712
+    },
+    "runtime_engines": {
+      "heuristic": 7
+    },
+    "mean_static_ms": 0.255,
+    "mean_runtime_ms": 0.0,
+    "n_runtime_cases": 7
+  },
+  "sources": {
+    "dvmcp": 31,
+    "dvmcp_live": 31,
+    "mcptox": 1312,
+    "mcptox_real": 1312,
+    "benign": 369,
+    "benign_real_tools": 362
+  },
+  "rug_pull_ttd_calls": 1
+}
