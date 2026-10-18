@@ -24,7 +24,21 @@ _DEFAULT_MODELS = {
 
 
 def adk_model() -> Any:
+    """The ADK model for the active provider. OpenRouter / Ollama use the same
+    primary model the CrewAI chain starts with (LiteLLM routes ``openrouter/<slug>``
+    using OPENROUTER_API_KEY from the environment)."""
     provider = (os.environ.get("LLM_PROVIDER") or "openai").lower()
+    if provider in ("openrouter", "ollama"):
+        from google.adk.models.lite_llm import LiteLlm
+
+        from src.llm_chain import build_slots
+
+        slot = build_slots(include_local_fallback=False)[0]
+        if slot.provider == "ollama":
+            return LiteLlm(model=f"ollama_chat/{slot.model}",
+                           api_base=os.environ.get("LOCAL_LLM_ENDPOINT", "http://localhost:11434"))
+        return LiteLlm(model=f"openrouter/{slot.model}", max_tokens=2500,
+                       extra_body={"reasoning": {"effort": "low"}})
     name = os.environ.get("ADK_MODEL") or _DEFAULT_MODELS.get(provider, _DEFAULT_MODELS["openai"])
     if provider in ("gemini", "google"):
         return name

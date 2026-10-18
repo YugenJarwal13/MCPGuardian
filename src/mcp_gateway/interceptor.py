@@ -29,7 +29,7 @@ from src.adk_layer.state.session_schema import ToolFingerprint
 from src.adk_layer.state.tool_fingerprint_store import ToolFingerprintStore
 from src.audit import log_decision
 from src.config import allowlist as load_allowlist
-from src.crewai_layer.crew import analyze_runtime_timed, analyze_static
+from src.crewai_layer.crew import analyze_runtime_timed_meta, analyze_static_meta
 from src.crewai_layer.schemas import InspectionVerdict
 from src.data.schemas import ToolTestCase
 from src.evaluation.ablation_config import AblationConfig
@@ -70,6 +70,12 @@ def _response_text_and_keys(response: Any) -> tuple[str, set[str]]:
     except (json.JSONDecodeError, TypeError):
         pass
     return text, keys
+
+
+def _model_fields(meta: dict) -> dict:
+    """Audit fields naming the model that answered ({} for the heuristic path)."""
+    return {k: meta[k] for k in ("provider", "model", "method") if meta.get(k)} | (
+        {"cached": meta["cached"]} if "cached" in meta else {})
 
 
 def _refusal(tool_name: str, reason: str) -> dict:
@@ -115,6 +121,8 @@ class GuardianInterceptor:
         self._scope: dict[str, Optional[str]] = {}
         # Which engine produced each tool's verdicts: {"static": ..., "runtime": ...}.
         self.engines: dict[str, dict[str, str]] = {}
+        # Which model answered, per tool and stage: {"static": {"provider", "model", ...}}.
+        self.models: dict[str, dict[str, dict]] = {}
 
     # -- Phase 3: metadata screening ------------------------------------------
     async def screen_tool_metadata(self, tools: Any) -> Any:
@@ -124,10 +132,11 @@ class GuardianInterceptor:
             name, desc, schema = _tool_fields(tool)
             # Detectors are sync (and an LLM call can take seconds): run them off
             # the event loop so streaming callers stay responsive.
-            verdict, engine = await asyncio.to_thread(
-                analyze_static, name, desc, schema, self._use_llm)
+            verdict, engine, meta = await asyncio.to_thread(
+                analyze_static_meta, name, desc, schema, self._use_llm)
             self._static[name] = verdict
             self.engines.setdefault(name, {})["static"] = engine
+            self.models.setdefault(name, {})["static"] = meta
             self._scope[name] = ToolTestCase(
                 case_id="live", source="custom", tool_name=name, tool_description=desc,
                 tool_schema=schema, ground_truth_label="clean",
@@ -136,6 +145,7 @@ class GuardianInterceptor:
                 "layer": "static", "tool_name": name, "verdict": verdict.verdict,
                 "confidence": verdict.confidence, "reasoning": verdict.reasoning,
                 "flagged_phrases": verdict.flagged_phrases, "engine": engine,
+                **_model_fields(meta),
             })
         return tools
 
@@ -200,14 +210,15 @@ class GuardianInterceptor:
         ``(verdict, engine, elapsed_ms)`` or ``None`` when the layer is off."""
         if not self._ablation.enable_runtime:
             return None
-        verdict, engine, elapsed_ms = await asyncio.to_thread(
-            analyze_runtime_timed, name, text, self._use_llm)
+        verdict, engine, elapsed_ms, meta = await asyncio.to_thread(
+            analyze_runtime_timed_meta, name, text, self._use_llm)
         self._runtime[name] = verdict
         self.engines.setdefault(name, {})["runtime"] = engine
+        self.models.setdefault(name, {})["runtime"] = meta
         log_decision({"layer": "runtime", "tool_name": name, "verdict": verdict.verdict,
                       "confidence": verdict.confidence, "reasoning": verdict.reasoning,
                       "flagged_phrases": verdict.flagged_phrases, "engine": engine,
-                      "latency_ms": round(elapsed_ms, 3)})
+                      "latency_ms": round(elapsed_ms, 3), **_model_fields(meta)})
         return verdict, engine, elapsed_ms
 
     async def inspect_response_behavioral(self, name: str, text: str, keys: set[str]):
