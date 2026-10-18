@@ -132,7 +132,10 @@ def build_slots(include_local_fallback: bool = True) -> list[Slot]:
     else:
         raise ValueError(f"provider {provider!r} is not handled by the chain")
     fb = (os.environ.get("LLM_FALLBACK_PROVIDER") or "").lower()
-    if include_local_fallback and fb == "ollama":
+    # LLM_LOCAL_FALLBACK=off keeps evaluations strict: a failed OpenRouter chain must
+    # not silently hand cases to a much weaker local model.
+    local_ok = os.environ.get("LLM_LOCAL_FALLBACK", "on").lower() != "off"
+    if include_local_fallback and local_ok and fb == "ollama":
         slots.append(Slot("ollama", _local_model(), "ollama_format"))
     return slots
 
@@ -315,7 +318,9 @@ class ChainLLM:
                 self._bucket.acquire()
             t0 = time.monotonic()
             try:
-                status, headers, data = self._transport(slot, self._payload(slot, system, user), self.timeout_s)
+                # CPU-only local models can legitimately need several minutes per call.
+                budget = max(self.timeout_s, 600.0) if slot.provider == "ollama" else self.timeout_s
+                status, headers, data = self._transport(slot, self._payload(slot, system, user), budget)
             except Exception as exc:       # network error / timeout
                 tried.append(f"{slot.label}: {type(exc).__name__}")
                 continue

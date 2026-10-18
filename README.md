@@ -46,7 +46,7 @@ agent → GuardedMCPClient → interceptor → [CrewAI: static + runtime] →A2A
 python -m venv .venv
 source .venv/bin/activate            # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env                 # then fill in your LLM key(s)
+cp .env.example .env                 # then fill in your LLM key(s) — see "LLM configuration"
 ```
 
 Sanity-check the three frameworks (Phase 0):
@@ -83,10 +83,18 @@ streamlit run src/dashboard/app.py
 
 ## Running the live UI
 
-Pick a clean or poisoned MCP server, run one tool call, and watch every stage
-stream in live: static check → policy gate / tool call → runtime check →
-behavioural check → A2A hop → enforcement. Escalations render Approve/Deny
-buttons (human in the loop over the WebSocket).
+Two pages, one light/dark-themed app (the theme toggle persists across refreshes):
+
+* **Live demo** — pick a clean or poisoned MCP server, run one tool call, and watch every
+  stage stream in live: static check → policy gate / tool call → runtime check → behavioural
+  check → A2A hop → enforcement. Each stage shows the engine that decided (`LLM · <model>`,
+  `heuristic`, `LLM failed → heuristic`, `LLM timed out → escalate`), its latency, and an
+  expandable detail (real description/response with flagged phrases highlighted, reasoning,
+  confidence, models tried). Escalations are an inline *Your decision* panel (Approve / Deny).
+* **Test a server live** — paste an http(s) MCP endpoint (SSE `…/sse` or streamable HTTP). The
+  Guardian connects and statically inspects every tool it offers (no call is made), then lets you
+  pick one tool and run the full pipeline on it. *Basic version:* stdio servers, authenticated
+  servers and multi-call sessions are not supported yet (the page says so).
 
 ```bash
 python scripts/run_dvmcp_native.py   # terminal 1 — live DVMCP challenges (optional)
@@ -94,13 +102,52 @@ bash scripts/run_api.sh              # terminal 2 — FastAPI + WS on :8000 (+ A
 bash scripts/run_frontend.sh         # terminal 3 — React/Vite on http://localhost:5173
 ```
 
-In-process fixture servers (clean reference, tricky-but-clean data, offline
-attack stand-ins) work without the lab. Each stage shows an engine badge —
-`LLM`, `heuristic`, or `LLM failed → heuristic` — so it is always visible which
-detector actually decided. Every streamed event is also written to
-`logs/audit_trail.jsonl` (layer `pipeline_event`), so the Streamlit dashboard
-shows the same runs. `npm --prefix frontend run build` lets the API serve the UI
-itself at http://127.0.0.1:8000.
+In-process fixture servers (clean reference, tricky-but-clean data, offline attack stand-ins) work
+without the lab. Every streamed event is also written to `logs/audit_trail.jsonl` (layer
+`pipeline_event`), so the Streamlit dashboard shows the same runs. `npm --prefix frontend run build`
+lets the API serve the UI itself at http://127.0.0.1:8000.
+
+## LLM configuration
+
+`.env` (git-ignored) selects the model behind the CrewAI agents (and the ADK anomaly judge):
+
+```dotenv
+LLM_PROVIDER=openrouter
+OPENROUTER_API_KEY=...
+LLM_MODEL=<primary model slug>
+OPENROUTER_FALLBACK_MODELS=<slug>,<slug>
+LLM_STRUCTURED_METHODS=response_format,tool_call,json_parse     # one per model, primary first
+LLM_FALLBACK_PROVIDER=ollama
+LLM_FALLBACK_MODEL=qwen3:4b
+LOCAL_LLM_ENDPOINT=http://localhost:11434
+```
+
+**The fallback chain** (`src/llm_chain.py`): primary model → fallback models → local Ollama. Each model has
+its own structured-output method (`response_format` = JSON schema, `tool_call` = a forced function call,
+`json_parse` = JSON in plain text, `ollama_format` = Ollama's schema constraint). A slot that fails
+*permanently* (HTTP 400/401/403/404) is disabled for the process; a daily-quota 429 disables the free tier
+until its reset; transient errors and unparseable output retry once and then fall through to the next slot.
+`LLM_LOCAL_FALLBACK=off` keeps the chain from ever reaching the local model (evaluations use this). Verified
+slugs for the placeholder names written in `.env` (`<dots3-note-preview-free-id>` etc.) are resolved
+automatically: `dots-studio/dots-3-note-preview:free`, `nvidia/nemotron-3.5-lightning:free`,
+`thinkingmachines/inkling-small:free` (the last returns HTTP 403 "only available on agentic harnesses", so it
+is skipped at runtime).
+
+**Forcing a provider for one run, without editing `.env`:**
+
+```bash
+LLM_PROVIDER=ollama python -m src.evaluation.run_eval --llm --name ollama     # local qwen3:4b only
+GUARDIAN_PROMPT_VERSION=v1 python -m src.evaluation.run_eval --llm --name llm_v1
+```
+
+A shell variable always wins over `.env`; `LLM_PROVIDER=ollama` never touches OpenRouter.
+
+**Quotas.** A *free-tier* OpenRouter key allows 50 `:free` requests/day (HTTP 429 `free-models-per-day`,
+resets 00:00 UTC; $10 of credits lifts it to 1,000/day). Evaluations are resumable — every model answer is
+cached in `logs/llm_cache.jsonl`, so re-running the same command continues where a quota stopped it.
+Gemini is not used (its block in `.env` is commented out).
+
+Every audit record of an LLM verdict carries `engine`, `provider`, `model` and `method`.
 
 ## Test data & ground truth
 
@@ -109,11 +156,13 @@ itself at http://127.0.0.1:8000.
 | DVMCP | 10 challenges → 31 live tools | `malicious` | 1:1 port→challenge→attack-category mapping (see `dvmcp_loader.py`) |
 | MCPTox | 1,312 | `malicious` | attack-only; 11 risk scopes; 36 author-flagged rows excluded |
 | Benign control | 369 | `clean` | 362 real unpoisoned tools from MCPTox's 45 servers + 7 hand-written |
-| Custom | backup only | either | added only if evaluation reveals a gap |
+| Custom (responses) | 50 | 29 `malicious`, 21 `clean` | hand-written tool *responses* (12 hard negatives with instruction-like words); the only runtime-inspection benchmark |
 
 ## Status
 
-Implemented phase by phase per [`implementation_plan.md`](implementation_plan.md).
-Deterministic layers (anomaly scoring, enforcement policy, metrics, interceptor
-plumbing, loaders, dashboard) are fully unit-tested; LLM-backed agents (CrewAI /
-ADK) require provider credentials in `.env` to execute live.
+Implemented phase by phase per [`implementation_plan.md`](implementation_plan.md); see
+[`docs/evaluation_report.md`](docs/evaluation_report.md) for measured results (LLM pipeline vs the deterministic
+baseline) and [`PHASE11_WORKLOG.md`](PHASE11_WORKLOG.md) / [`docs/PHASE12_REPORT.md`](docs/PHASE12_REPORT.md) for
+everything that was built, how, and what is still pending. Deterministic layers are fully unit-tested
+(`pytest -q`); the LLM path is tested offline with a fake transport and exercised live against OpenRouter and
+Ollama (see the report for sample sizes).

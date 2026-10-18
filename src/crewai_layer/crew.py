@@ -155,7 +155,8 @@ def _kickoff(agent, task_builder, *args) -> tuple[InspectionVerdict | None, dict
     from crewai import Crew
 
     llm = _make_llm()
-    agent = agent.model_copy(update={"llm": llm, "verbose": False, "max_iter": 3})
+    agent = agent.model_copy(update={"llm": llm, "verbose": False, "max_iter": 3,
+                                          "max_retry_limit": 0})
     task = task_builder(agent, *args)
     result = Crew(agents=[agent], tasks=[task]).kickoff()
     verdict = getattr(result, "pydantic", None)
