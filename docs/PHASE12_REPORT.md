@@ -218,7 +218,7 @@ bash scripts/run_api.sh ; bash scripts/run_frontend.sh           # http://localh
 | 10 | Link-local URL guard swallowed its own error (`CustomServerError` is a `ValueError`). | Fixed; test added. |
 | 11 | A `git rm` on never-tracked (git-ignored) CSVs aborted a commit chain. | Retried correctly; no data lost. |
 | 12 | Several patch scripts broke on shell-heredoc escaping and a transient file lock. | Re-done via files/edit tool; every change re-tested before commit. |
-| 13 | **Few-shot overlap (found while analysing results):** the v2 prompt quotes two DVMCP descriptions and overlaps some fixtures. | Disclosed prominently in the report; v1 (zero-shot) run used for the clean Challenge 2 answer; MCPTox/real benign tools identified as the held-out benchmarks. |
+| 13 | **Few-shot overlap (found while analysing results):** the v2 prompt quotes two DVMCP descriptions and overlaps some fixtures. The UI run later showed the model's reasoning literally saying "this matches the MALICIOUS examples provided (live DVMCP challenge 2)". | Disclosed prominently in the report; the v1 (zero-shot) run is used for the clean Challenge 2 answer; MCPTox and the real benign tools are the held-out benchmarks. |
 
 ---
 
@@ -243,8 +243,11 @@ bash scripts/run_api.sh ; bash scripts/run_frontend.sh           # http://localh
    laptop, so a full run would take ≈ 2 days. The LLM numbers are therefore from balanced samples with wide intervals.
 2. **v1 vs v2 on a hosted model**, and at more than 28 cases.
 3. **Hosted-model Challenge 2 under v1** (the local model covers it).
-4. **Live LLM pass through the new UI with the hosted model today** (quota); the UI's LLM states were verified against
-   the engine/model fields in the event stream and with the heuristic path, not with a live hosted call.
+4. **A live pass through the new UI with the *hosted* model** (quota). A live pass with the **local** model *was*
+   verified: on the "Test a server live" page, Challenge 2 ran with *Use LLM agents* on; OpenRouter's daily quota was
+   hit, the chain **fell back to local Ollama automatically**, and the Static check cards showed the badge
+   **LLM · qwen3:4b** with both tools **MALICIOUS 100%** after ~2 minutes per tool (typed live status and ticking timer
+   visible throughout).
 5. **Gemini** was not used (commented out in `.env`).
 
 ---
