@@ -50,7 +50,16 @@ app.include_router(runner.router)
 
 @app.get("/health")
 def health() -> dict:
-    return {"ok": True, "llm_available": llm_available(), "a2a_url": app.state.a2a_url,
+    """Status for the UI. Never includes keys; only which models are configured."""
+    from src.crewai_layer.crew import uses_chain
+    from src.llm_chain import get_chain
+
+    available = llm_available()
+    llm: dict = {"available": available}
+    if uses_chain():
+        llm["chain"] = get_chain().describe()
+        llm["events"] = get_chain().events[-5:]
+    return {"ok": True, "llm_available": available, "llm": llm, "a2a_url": app.state.a2a_url,
             "stages": STAGES}
 
 

@@ -83,8 +83,20 @@ class ServerSpec:
     default_tool: Optional[str] = None
     default_args: dict = field(default_factory=dict)
     factory: Optional[Callable[[], FakeMCPSession]] = None
+    url: Optional[str] = None            # user-supplied MCP endpoint ("Test a server LIVE")
+    transport: str = "sse"               # "sse" | "streamable-http" (custom URLs only)
 
     def is_live(self) -> bool:
+        if self.url:
+            from urllib.parse import urlparse
+
+            u = urlparse(self.url)
+            try:
+                with socket.create_connection((u.hostname, u.port or (443 if u.scheme == "https" else 80)),
+                                              timeout=3):
+                    return True
+            except OSError:
+                return False
         if self.port is None:
             return False
         try:
@@ -141,6 +153,37 @@ REGISTRY = _registry()
 _FIXTURE_SESSIONS: dict[str, FakeMCPSession] = {}
 
 
+class CustomServerError(ValueError):
+    """The user-supplied server URL is not acceptable (message is shown in the UI)."""
+
+
+def custom_spec(url: str) -> ServerSpec:
+    """A ServerSpec for a user-supplied MCP endpoint (the "Test a server LIVE" page).
+
+    Only http(s) MCP endpoints are supported: ``.../sse`` (legacy SSE transport) or any
+    other path, tried as streamable HTTP. stdio servers cannot be reached from here.
+    Credentials in the URL and link-local addresses (cloud metadata endpoints) are refused."""
+    import hashlib
+    import ipaddress
+    from urllib.parse import urlparse
+
+    u = urlparse((url or "").strip())
+    if u.scheme not in ("http", "https") or not u.hostname:
+        raise CustomServerError("Only http:// or https:// MCP endpoints are supported (stdio servers: not yet supported).")
+    if u.username or u.password:
+        raise CustomServerError("Credentials inside the URL are not accepted.")
+    try:
+        link_local = ipaddress.ip_address(u.hostname).is_link_local
+    except ValueError:
+        link_local = False           # a hostname, not an IP literal
+    if link_local:
+        raise CustomServerError("Link-local addresses (e.g. cloud metadata endpoints) are not allowed.")
+    transport = "sse" if u.path.rstrip("/").endswith("/sse") else "streamable-http"
+    sid = "custom-" + hashlib.sha1(url.encode()).hexdigest()[:10]
+    return ServerSpec(sid, f"{u.netloc}{u.path or ''}", "custom", "custom-url", url=url.strip(),
+                      transport=transport)
+
+
 def get_spec(server_id: str) -> ServerSpec:
     if server_id not in REGISTRY:
         raise KeyError(server_id)
@@ -160,7 +203,16 @@ async def open_session(spec: ServerSpec) -> AsyncIterator[Any]:
     from mcp import ClientSession
     from mcp.client.sse import sse_client
 
-    async with sse_client(f"http://{DVMCP_HOST}:{spec.port}/sse") as (read, write):
+    if spec.url and spec.transport == "streamable-http":
+        from mcp.client.streamable_http import streamablehttp_client
+
+        async with streamablehttp_client(spec.url) as (read, write, _sid):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                yield session
+        return
+    target = spec.url or f"http://{DVMCP_HOST}:{spec.port}/sse"
+    async with sse_client(target) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
             yield session

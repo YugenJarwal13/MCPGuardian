@@ -31,6 +31,8 @@ class PipelineEvent(BaseModel):
     message: str
     detail: dict[str, Any] = Field(default_factory=dict)
     engine: Engine = "none"
+    provider: Optional[str] = None      # which model answered (LLM verdicts only)
+    model: Optional[str] = None
     elapsed_ms: float = 0.0
     timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -47,18 +49,22 @@ class EventEmitter:
         self._stage_start: dict[str, float] = {}
 
     async def emit(self, stage: str, status: str, message: str,
-                   detail: Optional[dict] = None, engine: str = "none") -> PipelineEvent:
+                   detail: Optional[dict] = None, engine: str = "none",
+                   model_meta: Optional[dict] = None) -> PipelineEvent:
         now = time.monotonic()
         if status == "started":
             self._stage_start[stage] = now
             elapsed = 0.0
         else:
             elapsed = (now - self._stage_start.get(stage, now)) * 1000
+        mm = model_meta or {}
         event = PipelineEvent(run_id=self.run_id, stage=stage, status=status, message=message,
-                              detail=detail or {}, engine=engine, elapsed_ms=round(elapsed, 2))
+                              detail=detail or {}, engine=engine, provider=mm.get("provider"),
+                              model=mm.get("model"), elapsed_ms=round(elapsed, 2))
         log_decision({"layer": "pipeline_event", "run_id": self.run_id,
                       "server_id": self._server_id, "tool_name": self.tool_name,
                       "stage": stage, "status": status, "message": message,
-                      "engine": engine, "elapsed_ms": event.elapsed_ms, "detail": event.detail})
+                      "engine": engine, "provider": event.provider, "model": event.model,
+                      "elapsed_ms": event.elapsed_ms, "detail": event.detail})
         await self._send(event.model_dump())
         return event

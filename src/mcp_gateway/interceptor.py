@@ -125,10 +125,15 @@ class GuardianInterceptor:
         self.models: dict[str, dict[str, dict]] = {}
 
     # -- Phase 3: metadata screening ------------------------------------------
-    async def screen_tool_metadata(self, tools: Any) -> Any:
+    async def screen_tool_metadata(self, tools: Any, on_tool: Optional[Callable] = None) -> Any:
+        """Static-screen every listed tool. ``on_tool(i, n, name, phase)`` (async, optional)
+        is awaited with phase "start"/"done" so a streaming caller can report progress."""
         if not self._ablation.enable_static:
             return tools
-        for tool in _iter_tools(tools):
+        all_tools = list(_iter_tools(tools))
+        for i, tool in enumerate(all_tools, start=1):
+            if on_tool is not None:
+                await on_tool(i, len(all_tools), _tool_fields(tool)[0], "start")
             name, desc, schema = _tool_fields(tool)
             # Detectors are sync (and an LLM call can take seconds): run them off
             # the event loop so streaming callers stay responsive.
@@ -147,6 +152,8 @@ class GuardianInterceptor:
                 "flagged_phrases": verdict.flagged_phrases, "engine": engine,
                 **_model_fields(meta),
             })
+            if on_tool is not None:
+                await on_tool(i, len(all_tools), name, "done")
         return tools
 
     # -- Phase 6: pre-call enforcement gate -----------------------------------

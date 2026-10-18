@@ -27,7 +27,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from src.adk_layer.callbacks.enforcement_callbacks import GuardianDecision
 from src.adk_layer.state.tool_fingerprint_store import ToolFingerprintStore
 from src.api.events import EventEmitter
-from src.api.servers import default_args_from_schema, get_spec, open_session
+from src.api.servers import CustomServerError, custom_spec, default_args_from_schema, get_spec, open_session
 from src.crewai_layer.crew import llm_available
 from src.evaluation.ablation_config import AblationConfig
 from src.mcp_gateway.interceptor import (
@@ -60,13 +60,26 @@ def reset_server_state(server_id: str) -> None:
     servers._FIXTURE_SESSIONS.pop(server_id, None)
 
 
-def _verdict_detail(v, engine: str | None = None, **extra) -> dict:
+def _verdict_detail(v, engine: str | None = None, meta: dict | None = None, **extra) -> dict:
     d = {"verdict": v.verdict, "confidence": v.confidence, "reasoning": v.reasoning,
          "flagged_phrases": v.flagged_phrases}
     if engine:
         d["engine"] = engine
+    if meta:
+        d.update({k: meta[k] for k in ("provider", "model", "method", "cached") if k in meta})
+        if meta.get("latency_ms") is not None:
+            d["model_latency_ms"] = meta["latency_ms"]
+        if meta.get("slots_tried"):
+            d["models_tried"] = meta["slots_tried"]
     d.update(extra)
     return d
+
+
+def _friendly_error(exc: BaseException) -> str:
+    """Unwrap anyio ExceptionGroups so the UI shows the real connection error."""
+    while getattr(exc, "exceptions", None):
+        exc = exc.exceptions[0]
+    return f"{type(exc).__name__}: {str(exc)[:300]}"
 
 
 def _preview(text: str, n: int = 1500) -> str:
@@ -78,8 +91,13 @@ class _Run:
         self.precall_approved: bool | None = None
         self.ws = ws
         self.req = req
-        self.server_id = req["server_id"]
-        self.spec = get_spec(self.server_id)
+        if req.get("server_url"):
+            self.spec = custom_spec(req["server_url"])     # may raise CustomServerError
+            self.server_id = self.spec.id
+        else:
+            self.server_id = req["server_id"]
+            self.spec = get_spec(self.server_id)
+        self.inspect_only = bool(req.get("inspect_only"))
         self.a2a = a2a_client
         self.em = EventEmitter(uuid.uuid4().hex[:12], self._send, self.server_id)
 
@@ -124,16 +142,28 @@ class _Run:
             human_approval_callback=human, a2a_client=self.a2a)
 
         # 1. connect ---------------------------------------------------------
-        where = f"127.0.0.1:{spec.port}/sse" if spec.port else "in-process fixture"
+        where = (spec.url if spec.url else f"127.0.0.1:{spec.port}/sse" if spec.port
+                 else "in-process fixture")
         await em.emit("connect", "started", f"Connecting to {spec.name} ({where})…")
-        if spec.port is not None and not spec.is_live():
-            await em.emit("connect", "error", f"Nothing is listening on port {spec.port}. "
-                          "Start the lab: python scripts/run_dvmcp_native.py")
+        if (spec.port is not None or spec.url) and not spec.is_live():
+            hint = ("Start the lab: python scripts/run_dvmcp_native.py" if spec.port
+                    else "Nothing is reachable at that address.")
+            await em.emit("connect", "error", f"Cannot reach {where}. {hint}")
             await em.emit("done", "error", "Run aborted — server offline.")
             return
-        async with open_session(spec) as session:
+        try:
+            session_cm = open_session(spec)
+            session = await session_cm.__aenter__()
+        except BaseException as exc:      # noqa: BLE001 - surfaced to the user, not swallowed
+            await em.emit("connect", "error", f"MCP handshake failed ({spec.transport}): {_friendly_error(exc)}",
+                          {"transport": spec.transport, "endpoint": where,
+                           "hint": "Supported: SSE (.../sse) and streamable HTTP. stdio servers: not yet supported."})
+            await em.emit("done", "error", "Run aborted — could not connect.")
+            return
+        try:
             await em.emit("connect", "passed", f"Connected to {spec.name}.",
                           {"source": spec.source, "endpoint": where,
+                           **({"transport": spec.transport} if spec.url else {}),
                            **({"note": llm_note} if llm_note else {})})
 
             # 2. list_tools ----------------------------------------------------
@@ -156,22 +186,44 @@ class _Run:
 
             # 3. static_check --------------------------------------------------
             await em.emit("static_check", "started",
-                          f"Static analysis running on '{tool}' and its {len(tools) - 1} "
-                          "sibling tool(s)…")
-            await interceptor.screen_tool_metadata(listed)
+                          f"Static analysis (CrewAI) running on {len(tools)} tool(s)…")
+
+            async def static_progress(i: int, n: int, name: str, phase: str) -> None:
+                if phase == "start" and n > 1:
+                    await em.emit("static_check", "started",
+                                  f"Static analysis (CrewAI) {i}/{n} — inspecting '{name}'…")
+
+            await interceptor.screen_tool_metadata(listed, on_tool=static_progress)
             sv = interceptor._static[tool]
             s_engine = interceptor.engines.get(tool, {}).get("static", "none")
+            s_meta = interceptor.models.get(tool, {}).get("static", {})
             others = sorted(n for n, v in interceptor._static.items()
                             if n != tool and v.verdict != "clean")
-            detail = _verdict_detail(sv, description=tools[tool][1],
+            all_tools = [{"name": n, "verdict": v.verdict, "confidence": v.confidence,
+                          "reasoning": v.reasoning, "flagged_phrases": v.flagged_phrases,
+                          "engine": interceptor.engines.get(n, {}).get("static"),
+                          "model": interceptor.models.get(n, {}).get("static", {}).get("model"),
+                          "scope": interceptor._scope.get(n),
+                          "default_args": default_args_from_schema(tools[n][2]),
+                          "description": tools[n][1]} for n, v in interceptor._static.items()]
+            detail = _verdict_detail(sv, meta=s_meta, description=tools[tool][1],
                                      requested_scope=interceptor._scope.get(tool),
-                                     other_flagged_tools=others)
+                                     other_flagged_tools=others, all_tools=all_tools)
             if sv.verdict == "clean":
                 await em.emit("static_check", "passed", f"'{tool}' metadata looks clean ✓",
-                              detail, s_engine)
+                              detail, s_engine, s_meta)
             else:
                 await em.emit("static_check", "flagged",
-                              f"'{tool}' metadata flagged as {sv.verdict}!", detail, s_engine)
+                              f"'{tool}' metadata flagged as {sv.verdict}!", detail, s_engine, s_meta)
+
+            if self.inspect_only:
+                flagged = [t for t in all_tools if t["verdict"] != "clean"]
+                await em.emit("done", "flagged" if flagged else "passed",
+                              f"Inspection complete — {len(flagged)} of {len(all_tools)} tool(s) flagged. "
+                              "Pick a tool below to call it through the Guardian.",
+                              {"inspect_only": True, "tools": all_tools,
+                               "engines": {t["name"]: t["engine"] for t in all_tools}})
+                return
 
             # 4. tool_call (pre-call policy gate, then the real call) ----------
             await em.emit("tool_call", "started", f"Policy gate for '{tool}'…",
@@ -200,12 +252,13 @@ class _Run:
                 await em.emit("runtime_check", "started",
                               "Calling the CrewAI runtime inspector on the response, hold on…")
                 rv, r_engine, r_ms = await interceptor.inspect_response_runtime(tool, text)
+                r_meta = interceptor.models.get(tool, {}).get("runtime", {})
                 await em.emit(
                     "runtime_check", "passed" if rv.verdict == "clean" else "flagged",
                     "Response looks like ordinary data ✓" if rv.verdict == "clean"
                     else f"Injected instruction detected ({rv.verdict})!",
-                    _verdict_detail(rv, inspector_latency_ms=round(r_ms, 2),
-                                    response_preview=_preview(text)), r_engine)
+                    _verdict_detail(rv, meta=r_meta, inspector_latency_ms=round(r_ms, 2),
+                                    response_preview=_preview(text)), r_engine, r_meta)
 
                 await em.emit("behavioral_check", "started",
                               "Updating the behavioural fingerprint (ADK anomaly agent)…")
@@ -270,7 +323,10 @@ class _Run:
                           "BLOCK" if final in ("block", "escalate_denied") else "ESCALATE → approved",
                           {"final_decision": final, "tool": tool,
                            "engines": interceptor.engines.get(tool, {}),
+                           "models": {k: v.get("model") for k, v in interceptor.models.get(tool, {}).items()},
                            **({"response": _preview(text)} if released and response else {})})
+        finally:
+            await session_cm.__aexit__(None, None, None)
 
 
 @router.websocket("/ws/run")
@@ -283,6 +339,12 @@ async def ws_run(ws: WebSocket) -> None:
         except KeyError:
             await ws.send_json({"stage": "done", "status": "error",
                                 "message": f"Unknown server '{req.get('server_id')}'"})
+            return
+        except CustomServerError as exc:
+            await ws.send_json({"stage": "connect", "status": "error", "message": str(exc),
+                                "detail": {}, "engine": "none", "elapsed_ms": 0})
+            await ws.send_json({"stage": "done", "status": "error", "message": "Run aborted.",
+                                "detail": {}, "engine": "none", "elapsed_ms": 0})
             return
         try:
             await run.run()
