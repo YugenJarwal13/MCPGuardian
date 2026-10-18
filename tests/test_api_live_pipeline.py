@@ -65,7 +65,8 @@ def test_tricky_clean_data_stays_clean(client):
 
 
 def test_poisoned_response_flagged_after_the_call(client):
-    events = _run(client, "demo-poisoned-response")
+    # fetch_url takes a url parameter (network egress), so the policy asks a human first.
+    events = _run(client, "demo-poisoned-response", approvals=[True])
     assert _final(events, "static_check")["status"] == "passed"
     assert any(e["stage"] == "tool_call" and e["status"] == "passed" for e in events)
     rt = _final(events, "runtime_check")

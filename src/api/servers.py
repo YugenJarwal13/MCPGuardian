@@ -66,7 +66,8 @@ def _notes_writer_server() -> FakeMCPSession:
     (filesystem_write) always needs a human — the human-in-the-loop demo."""
     return FakeMCPSession(
         tools=[{"name": "save_note", "description": "Saves a note to the user's notes folder.",
-                "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}}}}],
+                "inputSchema": {"type": "object", "properties": {
+                    "path": {"type": "string"}, "content": {"type": "string"}}}}],
         responses={"save_note": {"content": [{"type": "text", "text": "Saved note #17."}]}},
     )
 
@@ -115,7 +116,8 @@ def _registry() -> dict[str, ServerSpec]:
                    default_args={"package": "billing"}, factory=_tricky_clean_server),
         ServerSpec("demo-notes-writer", "Notes writer (clean, but writes files -> human approval)",
                    "clean", "in-process fixture", default_tool="save_note",
-                   default_args={"text": "buy milk"}, factory=_notes_writer_server),
+                   default_args={"path": "notes/todo.txt", "content": "buy milk"},
+                   factory=_notes_writer_server),
         ServerSpec("demo-poisoned-metadata", "Poisoned weather tool (offline fixture)", "poisoned",
                    "in-process fixture", "tool_poisoning", default_tool="get_weather",
                    default_args={"city": "Delhi"}, factory=build_poisoned_metadata_server),
