@@ -156,7 +156,8 @@ def _group_table(rows: list[tuple[str, list[dict], str]], cfg: str, scope_mode: 
 
 
 def _runs() -> dict:
-    names = ("deterministic", "llm", "ollama", "ollama_v1", "ollama_v2_sub", "prompt_v1", "prompt_v2")
+    names = ("deterministic", "llm", "ollama", "ollama_v1", "ollama_v2_sub", "ollama_mcptox",
+             "prompt_v1", "prompt_v2")
     return {n: load_run(n) for n in names}
 
 
@@ -247,6 +248,22 @@ def write_report() -> Path:
                   "quota ran out) is *unanswered*, is excluded from the LLM numbers, and is never relabelled. The "
                   "heuristic is always compared on exactly the cases the LLM answered.", ""]
 
+    if llm_runs:
+        lines += ["## Read this first: what is and is not held out", "",
+                  "The **v2 prompt contains few-shot examples** (`src/crewai_layer/tasks/`). Their sources: the literal text of "
+                  "two DVMCP tool descriptions (Challenge 2 `get_company_data`, Challenge 10 `malicious_check_system_status`), "
+                  "and hand-written response examples whose ideas overlap several of the 50 response fixtures (the same "
+                  "author wrote both; e.g. a README \"ignore the compiler warnings\" negative and a customer-quote "
+                  "negative). So under v2:", "",
+                  "| Benchmark | Clean test of the LLM? |", "|---|---|",
+                  "| MCPTox attacks (metadata) | **Yes** — never used in any prompt |",
+                  "| Benign real tools (MCPTox clean) | **Yes** — never used in any prompt |",
+                  "| DVMCP Challenge 2 / 10 | **No under v2** — their text is in the prompt; use the **v1 (zero-shot)** run below |",
+                  "| Custom response fixtures | **Partly** — similar ideas appear in the examples; v1 is the cleaner estimate |", "",
+                  "v1 contains only the two original positive and two negative examples from the project brief (one is a "
+                  "changelog line similar to fixture `custom-resp-hn-01`). Prefer the MCPTox and v1 numbers when asking "
+                  "\"does the LLM generalise?\".", ""]
+
     # ---- headline per LLM run
     for label, hdr, recs, ans in llm_runs:
         rows = [(label, ans, "primary"), ("Heuristic — same cases", ans, "heuristic")]
@@ -272,6 +289,24 @@ def write_report() -> Path:
         lines += ["", "Per group, combined config:", ""]
         lines += _group_table(rows, "combined", None)
         lines.append("")
+
+    # ---- widened MCPTox sample (local model)
+    wide = runs.get("ollama_mcptox")
+    if wide:
+        wans = [r for r in wide[1] if answered(r)]
+        if wans:
+            lines += ["## MCPTox recall at a larger sample (local model, prompt v2)", "",
+                      "MCPTox is the cleanest generalisation test (never used in any prompt). This run widens it to "
+                      f"{len(wans)} attack cases answered by the model.", "",
+                      "| Detector | Recall on MCPTox attacks (static) |", "|---|---|"]
+            for lbl, src in ((_label_for(wans), "primary"), ("Heuristic — same cases", "heuristic")):
+                m = metrics(wans, src, "static_only", None)["groups"].get("mcptox", {"flagged": 0, "n": 0})
+                lines.append(f"| {lbl} | {_rate_cell(m['flagged'], m['n'])} |")
+            full = next((r for r in [det] if r), None)
+            if full:
+                m = metrics(full[1], "primary", "static_only", None)["groups"]["mcptox"]
+                lines.append(f"| Heuristic — all {m['n']} MCPTox cases | {_rate_cell(m['flagged'], m['n'])} |")
+            lines.append("")
 
     # ---- policy view and the scope before/after
     if det:
@@ -377,9 +412,9 @@ def write_report() -> Path:
               "- **Models are free-tier or small and non-deterministic.** Latency, availability and even verdicts can "
               "differ between runs. A slot that returns a permanent error (Inkling Small: HTTP 403 \"only available on "
               "agentic harnesses\") is skipped automatically.",
-              "- **Few-shot prompts (v2) were written from DVMCP and hand-written cases only**; MCPTox was never used "
-              "as prompt material, so MCPTox numbers are held-out. DVMCP and the response cases overlap with the "
-              "few-shot *style* (not the text), so they are less independent than MCPTox.",
+              "- **The v2 few-shot prompt is not independent of DVMCP and the response fixtures.** It quotes two DVMCP "
+              "descriptions and uses examples that resemble some fixtures (see \"what is and is not held out\"). MCPTox "
+              "and the real benign tools were never used as prompt material, so those numbers are held out.",
               "- **DVMCP labels are per challenge.** Every tool on a challenge server is labelled malicious although several "
               "(e.g. `ping_host`) have benign metadata and are exploitable only through their implementation; static "
               "analysis should not flag those, which caps DVMCP recall for any detector.",

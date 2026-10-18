@@ -16,8 +16,12 @@ thresholds:
 timeouts:
   # Per-agent wall-clock budget (seconds) before a verdict is treated as
   # inconclusive and the call is escalated rather than silently allowed.
-  static_analysis_s: 30
-  runtime_inspection_s: 30
+  # Measured model-call latency on the hosted free model: median ~11 s, p95 17-24 s,
+  # occasional outliers >26 s (see docs/evaluation_report.md). 60 s leaves headroom
+  # without letting a hung call stall a demo. A CPU-only local model needs minutes:
+  # override per run with GUARDIAN_AGENT_TIMEOUT_S (the evaluator does this).
+  static_analysis_s: 60
+  runtime_inspection_s: 60
 
 dvmcp:
   host: localhost

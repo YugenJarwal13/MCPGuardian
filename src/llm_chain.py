@@ -388,7 +388,11 @@ class ChainLLM:
     # -- payloads & parsing -----------------------------------------------------------------
     def _payload(self, slot: Slot, system: str, user: str) -> dict:
         if slot.method == "ollama_format":
+            # LLM_OLLAMA_KEEP_ALIVE=0 unloads the model after every request. On a small-RAM
+            # machine llama.cpp's in-RAM prompt cache otherwise grows with each distinct
+            # prompt until the host thrashes (observed: 7 GB resident, 0.3 tokens/s).
             return {"model": slot.model, "stream": False, "think": False, "format": VERDICT_SCHEMA,
+                    "keep_alive": os.environ.get("LLM_OLLAMA_KEEP_ALIVE", "5m"),
                     "options": {"temperature": 0, "num_ctx": 4096},
                     "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
         body: dict[str, Any] = {

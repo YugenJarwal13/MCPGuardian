@@ -65,7 +65,7 @@ def _interleave(groups: dict[str, list[ToolTestCase]]) -> list[ToolTestCase]:
 
 
 def select_cases(cases: list[ToolTestCase], sample: bool, mcptox_n: int, benign_n: int,
-                 limit: int | None) -> list[ToolTestCase]:
+                 limit: int | None, only_groups: list[str] | None = None) -> list[ToolTestCase]:
     rng = random.Random(SEED)
     by_group: dict[str, list[ToolTestCase]] = defaultdict(list)
     for c in cases:
@@ -86,6 +86,8 @@ def select_cases(cases: list[ToolTestCase], sample: bool, mcptox_n: int, benign_
     else:
         for g in by_group:
             rng.shuffle(by_group[g])
+    if only_groups:
+        by_group = {g: lst for g, lst in by_group.items() if g in only_groups}
     ordered = _interleave(by_group)
     return ordered[:limit] if limit else ordered
 
@@ -199,6 +201,8 @@ async def _main(args) -> None:
         os.environ.setdefault("GUARDIAN_AGENT_TIMEOUT_S", "1500" if local else "420")
         if not args.allow_local_fallback:
             os.environ["LLM_LOCAL_FALLBACK"] = "off"
+        if local:
+            os.environ.setdefault("LLM_OLLAMA_KEEP_ALIVE", "0")   # see llm_chain: avoids RAM thrash
         if args.workers is None:
             args.workers = 1 if local else 6          # one CPU-bound request at a time
 
@@ -206,7 +210,7 @@ async def _main(args) -> None:
     all_cases = await load_all_cases()
     sample = args.llm and not args.full
     cases = select_cases(all_cases, sample=sample, mcptox_n=args.mcptox_n, benign_n=args.benign_n,
-                         limit=args.limit)
+                         limit=args.limit, only_groups=args.only_groups)
     print(f"run '{name}': {'LLM' if args.llm else 'deterministic'}, {len(cases)} cases "
           f"({'stratified sample' if sample else 'full set'}), prompt {os.environ.get('GUARDIAN_PROMPT_VERSION', 'v2')}")
     if args.llm:
@@ -227,6 +231,7 @@ def main() -> None:
     ap.add_argument("--name", help="output name (cases_<name>.jsonl); default llm / deterministic")
     ap.add_argument("--full", action="store_true", help="with --llm: all cases instead of the sample")
     ap.add_argument("--limit", type=int, help="first N of the (nested) balanced ordering")
+    ap.add_argument("--only-groups", nargs="+", help="restrict to groups, e.g. mcptox (used to widen one benchmark)")
     ap.add_argument("--mcptox-n", type=int, default=120)
     ap.add_argument("--benign-n", type=int, default=60)
     ap.add_argument("--workers", type=int, default=None, help="parallel cases (default 6 hosted, 1 local)")
