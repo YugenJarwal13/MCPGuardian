@@ -98,10 +98,11 @@ the test set."*
   (regex 5 of 11).
 - **MCPTox, held out (never in any prompt), 50 cases:** LLM **62.0%** (95% CI 48–74%) vs regex **34.0%** on the same
   cases (39.7% over all 1,312).
-- **Hosted LLM (OpenRouter dots-3-note-preview), 32 cases (stopped by the free-tier 50 requests/day cap):** recall
-  80.0%, precision 92.3% (regex on the same cases 46.7% / 77.8%).
+- **Hosted LLM (OpenRouter dots-3-note-preview), 42 cases (stopped by the free-tier 50 requests/day cap):** recall
+  73.7%, precision 87.5% (regex on the same cases 42.1% / 80.0%); 0 of 6 hard negatives flagged (regex 2 of 6).
 - **Cost:** hosted median ~11 s per model call, local CPU median ~67 s (p95 ~162 s), regex under a millisecond.
-- **Prompt v2 did not beat v1** (28 identical cases, one case each way) — say so if asked.
+- **Prompt v2 did not beat v1** on either model (28 identical cases each: local one case each way; hosted recall
+  83.3% for both) — say so if asked.
 - **Challenge 2** is flagged malicious (1.0) by the LLM, including under the zero-shot prompt v1.
 
 *"On the real benchmark the regex catches 39.7% of MCPTox attack descriptions, not the 77.5% we first

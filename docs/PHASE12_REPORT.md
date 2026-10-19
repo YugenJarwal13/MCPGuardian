@@ -30,18 +30,19 @@ still pending. Written 2026-10-18.
 | Heuristic (regex/statistics), full set | 1,762 | 96.9% | 39.1% | 5/12 |
 | Heuristic, on the **same 70 cases** as the local LLM | 70 | 76.5% | 39.4% | 4/11 |
 | **LLM · Ollama `qwen3:4b`** (CrewAI agents, prompt v2) | 70 | **100%** | **63.6%** | **0/11** |
-| Heuristic, on the same 32 cases as the hosted LLM | 32 | 77.8% | 46.7% | 2/5 |
-| **LLM · OpenRouter `dots-3-note-preview`** (prompt v2) | 32 | **92.3%** | **80.0%** | **0/5** |
+| Heuristic, on the same 42 cases as the hosted LLM | 42 | 80.0% | 42.1% | 2/6 |
+| **LLM · OpenRouter `dots-3-note-preview`** (prompt v2) | 42 | **87.5%** | **73.7%** | **0/6** |
 
 - **Did the LLM beat the regex's 39.7% MCPTox recall?** On the held-out MCPTox sample the local 4B model flagged
-  8 of 11 (72.7%) vs 6 of 11 for the regex on the same cases; the hosted model flagged 5 of 5 vs 3 of 5. Widened to **50 held-out MCPTox cases**, the local model's recall is **62.0% (31/50, 95% CI 48–74%)** vs 34.0% for the regex on the same cases and 39.7% across all 1,312 — the interval's lower bound (48%) clears the regex's full-set upper bound (42%), so on this benchmark **the LLM beat the regex**, by roughly 20–28 points.
+  8 of 11 (72.7%) vs 6 of 11 for the regex on the same cases; the hosted model flagged 6 of 6 vs 4 of 6. Widened to **50 held-out MCPTox cases**, the local model's recall is **62.0% (31/50, 95% CI 48–74%)** vs 34.0% for the regex on the same cases and 39.7% across all 1,312 — the interval's lower bound (48%) clears the regex's full-set upper bound (42%), so on this benchmark **the LLM beat the regex**, by roughly 20–28 points.
   These samples are small — read the Wilson intervals in the report — but the direction is consistent across both models.
 - **Runtime inspection (`runtime_only`, the project's novel layer)** was previously unmeasurable (0%, only 7 cases
   had a response). On the 50 hand-written response cases the local LLM caught **10 of 11** injected responses it was
   shown (regex 5/11) with **0 of 11 false positives** on instruction-like clean data (regex 4/11).
 - **DVMCP Challenge 2** (the regex's known miss): the LLM flags both tools **malicious (1.0)** — including under the
   zero-shot prompt v1, which contains no DVMCP text, so it is not memorisation.
-- **v2 prompt vs v1:** v2 did **not** measurably beat v1 (28 identical cases: one case each way).
+- **v2 prompt vs v1:** v2 did **not** measurably beat v1 on either model (28 identical cases each). Hosted: recall
+  83.3% for both, precision 83.3% (v1, 2 false positives) vs 90.9% (v2, 1). Local: one case each way.
 - **Cost:** model calls take seconds (hosted: median ~11 s) to minutes (CPU-only local: median ~67 s, p95 ~162 s) vs
   well under a millisecond for the regex.
 - **Scope rule:** benign real tools escalated by policy fell from 17.7% (keyword rule) to 11.9% (schema rule).
@@ -135,7 +136,8 @@ I did **not** edit `.env`; the code resolves the placeholders (`src/llm_chain.py
 | Run | Model | Cases scored / answered | Notes |
 |---|---|---|---|
 | `deterministic` | regex + statistics | 1,762 / 1,762 | full set; ~0.8 ms per case |
-| `llm` | OpenRouter dots-3-note-preview | 35 / **32** | stopped by the 50/day cap; 3 unanswered |
+| `llm` | OpenRouter dots-3-note-preview | 46 / **42** | stopped by the 50/day cap (twice: 2026-10-18 and 2026-10-20); 4 unanswered |
+| `prompt_v1`, `prompt_v2` | OpenRouter dots-3-note-preview, prompt v1 / v2 | 28 / **28** each | Task 5.5 on the hosted model (2026-10-20) |
 | `ollama` | Ollama qwen3:4b | 70 / **70** | one request at a time |
 | `ollama_v1`, `ollama_v2_sub` | qwen3:4b, prompt v1 / v2 | 28 / 28 each | Task 5.5 |
 | `ollama_mcptox` | qwen3:4b | 50 / **50** | MCPTox only, larger sample |
@@ -241,7 +243,7 @@ bash scripts/run_api.sh ; bash scripts/run_frontend.sh           # http://localh
 
 1. **The full 1,762-case LLM evaluation.** Hosted: capped at 50 requests/day. Local: ~70 s per call on this CPU-only
    laptop, so a full run would take ≈ 2 days. The LLM numbers are therefore from balanced samples with wide intervals.
-2. **v1 vs v2 on a hosted model**, and at more than 28 cases.
+2. **v1 vs v2 on more than 28 cases** (both models were measured at 28; only large effects are visible).
 3. **Hosted-model Challenge 2 under v1** (the local model covers it).
 4. **A live pass through the new UI with the *hosted* model** (quota). A live pass with the **local** model *was*
    verified: on the "Test a server live" page, Challenge 2 ran with *Use LLM agents* on; OpenRouter's daily quota was
@@ -257,7 +259,7 @@ bash scripts/run_api.sh ; bash scripts/run_frontend.sh           # http://localh
 **Needs OpenRouter capacity** (add $10 of credits → 1,000 free requests/day, or wait for the 00:00 UTC resets):
 1. `python -m src.evaluation.run_eval --llm --mcptox-n 200 --benign-n 100 --name llm` — resumes from the cache and
    continues the hosted run; repeat daily, or once with credits.
-2. `GUARDIAN_PROMPT_VERSION=v1 … --name prompt_v1` and the matching v2 subset to measure v1 vs v2 on a hosted model.
+2. v1 vs v2 on more than 28 cases (the 28-case comparison is done for both models).
 3. Optionally `--full` for all 1,762 cases.
 
 **Doesn't need a key:**

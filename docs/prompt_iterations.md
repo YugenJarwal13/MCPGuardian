@@ -1,7 +1,7 @@
 # Prompt iteration log (CrewAI inspection agents)
 
-Status: **v1 and v2 are both measured** (local `qwen3:4b`, same 28 cases). v2 did **not** measurably beat
-v1. See the numbers below and the full tables in [`evaluation_report.md`](evaluation_report.md).
+Status: **v1 and v2 are both measured on two models** (local `qwen3:4b` and hosted `dots-3-note-preview`, the same
+28 cases). v2 did **not** measurably beat v1 on either. See the numbers below and the full tables in [`evaluation_report.md`](evaluation_report.md).
 
 ## How the comparison was run
 
@@ -32,6 +32,26 @@ so a v2 result on those tools proves little. v1 contains no DVMCP text, and unde
 2 tools **malicious (confidence 1.0)** (`get_company_data`, `search_company_database`), which the regex rates clean
 and suspicious. That is the uncontaminated answer to "does the LLM catch the heuristic's known miss": **yes**.
 
+## Hosted model (OpenRouter dots-3-note-preview, same 28 cases, 2026-10-20)
+
+```bash
+python -m src.evaluation.run_eval --llm --mcptox-n 200 --benign-n 100 --limit 28 --name prompt_v2
+python -m src.evaluation.run_eval --llm --mcptox-n 200 --benign-n 100 --limit 28 --prompt-version v1 --name prompt_v1
+```
+
+All 28 cases were answered under both prompts (0 failures).
+
+| Prompt | Precision | Recall | MCPTox | DVMCP | Response attacks | Hard negatives (FP) | Benign real tools (FP) |
+|---|---|---|---|---|---|---|---|
+| v1 | 83.3% | 83.3% | 4/4 | 2/4 | 4/4 | 0/4 | 2/4 |
+| v2 | 90.9% | 83.3% | 4/4 | 2/4 | 4/4 | 0/4 | 1/4 |
+| Heuristic (same cases) | 85.7% | 50.0% | 2/4 | 1/4 | 3/4 | 1/4 | 0/4 |
+
+Recall is identical; v2 made one fewer false positive on a real benign tool. One case is not evidence, so the
+conclusion matches the local model's: **v2 is not shown to be better than v1.** Under zero-shot v1 the hosted model
+also flags both Challenge 2 tools malicious (0.98 and 1.0), a second, independent confirmation that the LLM catches
+the heuristic's known miss without having seen the text.
+
 ## What each version contains
 
 - **v1** — the original zero-shot checklist (static) and the original two-positive / two-negative few-shot prompt
@@ -51,8 +71,8 @@ the results ("what is and is not held out"). Prefer MCPTox and v1 when asking wh
 
 ## Not yet done
 
-- v1 vs v2 on a **hosted** model (needs more than 50 requests/day — add credits or wait for resets), and on a larger
-  sample than 28 cases; at n=28 only large effects are visible.
+- v1 vs v2 on a larger sample than 28 cases (hosted needs more than 50 requests/day — add credits); at n=28 only
+  large effects are visible.
 - A v3 built from the models' own errors (add examples from DVMCP / benign / fixtures only — never MCPTox).
   One concrete failure to learn from: `custom-resp-atk-03`, where the 4B model *quoted* the injected
   "Instruction for the summarizer" in its reasoning but still answered `clean`.
