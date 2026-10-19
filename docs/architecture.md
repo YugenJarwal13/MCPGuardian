@@ -61,5 +61,5 @@ pipeline of inspection agents before the caller ever sees the result.
   independently of* any AI verdict. Even a fully-fooled inspection stack cannot
   let one of those auto-execute.
 - **Everything is auditable.** Every verdict and decision is appended to
-  `logs/audit_trail.jsonl`, giving the Monitoring/Observability story a concrete,
+  `backend/logs/audit_trail.jsonl`, giving the Monitoring/Observability story a concrete,
   clickable form in the Phase 9 dashboard.

@@ -5,7 +5,9 @@
       "name": "Run Guardian Demo",
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/src/demo_agent/run_demo.py",
+      "program": "${workspaceFolder}/backend/src/demo_agent/run_demo.py",
+      "cwd": "${workspaceFolder}/backend",
+      "env": { "PYTHONPATH": "${workspaceFolder}/backend" },
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.env"
     },
@@ -13,7 +15,9 @@
       "name": "Run Evaluation",
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/src/evaluation/run_eval.py",
+      "program": "${workspaceFolder}/backend/src/evaluation/run_eval.py",
+      "cwd": "${workspaceFolder}/backend",
+      "env": { "PYTHONPATH": "${workspaceFolder}/backend" },
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.env"
     }

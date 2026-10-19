@@ -32,12 +32,12 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from src.config import REPO_ROOT
+from src.config import BACKEND_ROOT
 from src.crewai_layer.heuristics import runtime_heuristic, static_heuristic
 from src.data.datasets import load_all_cases
 from src.data.schemas import ToolTestCase
 
-REPORTS_DIR = REPO_ROOT / "src" / "evaluation" / "reports"
+REPORTS_DIR = BACKEND_ROOT / "src" / "evaluation" / "reports"
 SEED = 7
 
 

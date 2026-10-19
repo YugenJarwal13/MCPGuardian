@@ -6,9 +6,10 @@ still pending. Written 2026-10-18.
 
 - **Repository:** `https://github.com/YugenJarwal13/MCPGuardian.git`, branch `master`. Everything below is
   committed and pushed (commit list in §9).
+- **Repository layout (changed after this report's runs):** all Python/backend code now lives in `backend/` (`backend/src`, `backend/tests`, `backend/config`, `backend/scripts`, `backend/logs`, `backend/external`, ...) and the React app in `frontend/`. Paths and commands in this report that start with `src/`, `tests/`, `scripts/` are relative to `backend/` (run Python commands from there). See the README for the startup commands.
 - **Start:** commit `9c262aa` (end of Phase 11). **Tests now:** 95 pass, 0 skipped (with the DVMCP lab running).
 - **Measured results** are in [`evaluation_report.md`](evaluation_report.md), generated from the per-case files in
-  `src/evaluation/reports/` (one file per run). This report quotes them and never invents a number.
+  `backend/src/evaluation/reports/` (one file per run). This report quotes them and never invents a number.
 
 ---
 
@@ -68,7 +69,7 @@ Verified slugs (public `GET /api/v1/models`, no key needed):
 | Inkling Small | `thinkingmachines/inkling-small:free` | `json_parse` | ❌ HTTP 403 "only available on agentic harnesses" — skipped automatically |
 | local fallback | Ollama `qwen3:4b` | `ollama_format` | ✅ (needs re-install + re-pull, see §4) |
 
-I did **not** edit `.env`; the code resolves the placeholders (`src/llm_chain.py`). A shell variable always wins
+I did **not** edit `.env`; the code resolves the placeholders (`backend/src/llm_chain.py`). A shell variable always wins
 (`LLM_PROVIDER=ollama …` forces the local model for one run without touching any file).
 
 ---
@@ -77,31 +78,31 @@ I did **not** edit `.env`; the code resolves the placeholders (`src/llm_chain.py
 
 ### 3.1 The LLM chain behind the CrewAI agents (commit `2314524`)
 
-- **`src/llm_chain.py`** — `ChainLLM` walks the configured chain. A slot with a permanent error (HTTP
+- **`backend/src/llm_chain.py`** — `ChainLLM` walks the configured chain. A slot with a permanent error (HTTP
   400/401/403/404) is disabled for the process; a daily-quota 429 disables the free tier until its reset; transient
   errors and unparseable output retry once, then fall through. An account-wide token bucket (`OPENROUTER_RPM`, default
-  16/min) respects the 20/min limit. Every answer is cached on disk (`logs/llm_cache.jsonl`) so a long evaluation
+  16/min) respects the 20/min limit. Every answer is cached on disk (`backend/logs/llm_cache.jsonl`) so a long evaluation
   **resumes** after an interruption or a quota stop. Per-call metadata (provider, model, method, latency, tokens,
   models tried) travels with the verdict.
-- **`src/crewai_layer/chain_llm.py`** — a CrewAI `BaseLLM` over the chain. *Why this exists:* CrewAI's agent loop
+- **`backend/src/crewai_layer/chain_llm.py`** — a CrewAI `BaseLLM` over the chain. *Why this exists:* CrewAI's agent loop
   only accepts text containing `Final Answer:`; a bare JSON reply makes it re-prompt up to `max_iter`, multiplying
   latency and (on a quota-limited key) requests. The LLM therefore answers `Thought: … Final Answer: {json}` so one
   call completes the agent; `output_pydantic` then parses the JSON. This also explains why the earlier Ollama
   probe never finished.
-- **`src/crewai_layer/crew.py`** — `analyze_static_meta` / `analyze_runtime_meta` return `(verdict, engine, meta)`;
+- **`backend/src/crewai_layer/crew.py`** — `analyze_static_meta` / `analyze_runtime_meta` return `(verdict, engine, meta)`;
   engine is `llm`, `heuristic`, `heuristic_fallback` (the LLM was tried and failed) or `timeout`. Provider and model
   go into every audit record. CrewAI telemetry is disabled. `Agent.max_retry_limit=0` (CrewAI had re-invoked failing
   calls 3×). `GUARDIAN_AGENT_TIMEOUT_S` overrides the timeouts per run.
-- **Quota protection:** `tests/conftest.py` forces LLM auto-detection off in the test suite so tests can never spend
-  quota. 12 offline tests (`tests/test_llm_chain.py`, fake transport) cover each payload method, the 403 disable, the
+- **Quota protection:** `backend/tests/conftest.py` forces LLM auto-detection off in the test suite so tests can never spend
+  quota. 12 offline tests (`backend/tests/test_llm_chain.py`, fake transport) cover each payload method, the 403 disable, the
   daily-quota path, retry/fall-through, the cache, placeholder resolution and a full CrewAI agent finishing in exactly
   one call.
-- ADK judge: `src/adk_layer/adk_runtime.py` routes the ADK anomaly judge through LiteLLM (`openrouter/<slug>` or
+- ADK judge: `backend/src/adk_layer/adk_runtime.py` routes the ADK anomaly judge through LiteLLM (`openrouter/<slug>` or
   `ollama_chat/<model>`).
 
 ### 3.2 Tasks 6 and 7 (commits `26b8c30`, `e0baa97`)
 
-- **Task 6 — response benchmark.** `src/data/custom_fixtures/response_cases.py` generates `fixtures.json`: **50 cases
+- **Task 6 — response benchmark.** `backend/src/data/custom_fixtures/response_cases.py` generates `fixtures.json`: **50 cases
   written for this project in its own words** — 29 injected responses (indirect injection in search/page/doc/ticket/
   email content, fake system/assistant turns, exfiltration directives, tool redirection, hidden JSON fields,
   zero-width/base64 obfuscation, persistence, social engineering), 9 plain benign, and **12 hard negatives** (a
@@ -120,8 +121,8 @@ I did **not** edit `.env`; the code resolves the placeholders (`src/llm_chain.py
 
 ### 3.3 Task 5 — the evaluation harness and results (commit `8182317` and the final commit)
 
-- **Design.** One file per run, `src/evaluation/reports/cases_<name>.jsonl` (verdicts, engine, provider, model,
-  method, latency, plus the heuristic's verdicts for the same case). `src/evaluation/report.py` derives every
+- **Design.** One file per run, `backend/src/evaluation/reports/cases_<name>.jsonl` (verdicts, engine, provider, model,
+  method, latency, plus the heuristic's verdicts for the same case). `backend/src/evaluation/report.py` derives every
   table, interval and slice from those files. Detectors-only and policy views; Wilson 95% intervals; per-group recall
   or false-positive rate; head-to-head on common cases; latency; LLM-vs-regex disagreement; Challenge 2 table;
   scope before/after; prompt v1 vs v2.
@@ -163,13 +164,13 @@ Builds on the Phase 11 React/Vite app and its WebSocket events.
 - **Verification:** driven in the in-app browser — Challenge 6 (real injected response highlighted), Challenge 10
   (flagged/blocked in dark mode), theme persistence across a reload, and the live page against Challenge 2. This found
   and fixed a real crash (inspect-mode `tools` arrived as objects; the renderer assumed strings) and added an
-  `ErrorBoundary`. `tests/test_api_custom_server.py` runs a real in-process FastMCP SSE server.
+  `ErrorBoundary`. `backend/tests/test_api_custom_server.py` runs a real in-process FastMCP SSE server.
 
 ### 3.5 Task 9
 
 `docs/viva_demo_script.md` rewritten for the new UI (incl. the quota budget, Challenge 2 with LLM off/on, the live
 page); `README.md` has an "LLM configuration" section (the chain, forcing a provider, quotas, resuming) — this is the
-documentation of the fallback chain; `config/settings.yaml` timeouts raised 30 s → 60 s from the measured latency.
+documentation of the fallback chain; `backend/config/settings.yaml` timeouts raised 30 s → 60 s from the measured latency.
 
 ---
 
@@ -189,7 +190,7 @@ ollama pull qwen3:4b                                             # ~2.5 GB
 python -m src.data.custom_fixtures.response_cases                # regenerate fixtures.json
 python -m src.data.build_manifest                                # 1,762 cases (DVMCP lab must be up)
 
-# --- evaluation (lab must be running: python scripts/run_dvmcp_native.py)
+# --- evaluation (lab must be running: python backend/scripts/run_dvmcp_native.py)
 python -m src.evaluation.run_eval                                # deterministic, full set
 python -m src.evaluation.run_eval --llm --limit 30 --name llm_sanity          # 5.0 sanity (OpenRouter)
 python -m src.evaluation.run_eval --llm --mcptox-n 200 --benign-n 100 --name llm   # resumes after a quota stop
@@ -199,7 +200,7 @@ python -m src.evaluation.run_eval --llm --provider ollama --only-groups mcptox -
 python -m src.evaluation.run_eval --report-only                  # rebuild docs/evaluation_report.md
 
 # --- UI
-bash scripts/run_api.sh ; bash scripts/run_frontend.sh           # http://localhost:5173
+bash backend/scripts/run_api.sh ; bash backend/scripts/run_frontend.sh           # http://localhost:5173
 ```
 
 ---
@@ -282,6 +283,6 @@ bash scripts/run_api.sh ; bash scripts/run_frontend.sh           # http://localh
 | `8182317` | Phase 12.5 (part 1) — evaluation harness + first real LLM results |
 | *(final)* | Phase 12.5 (part 2) — local-model runs, prompt comparison, docs, this report |
 
-Files of note: `src/llm_chain.py`, `src/crewai_layer/chain_llm.py`, `src/crewai_layer/crew.py`,
-`src/evaluation/{run_eval,report}.py`, `src/data/custom_fixtures/response_cases.py`, `src/data/schemas.py`,
-`src/api/{runner,servers,events,main}.py`, `frontend/src/**`, `docs/{evaluation_report,prompt_iterations,viva_demo_script,PHASE12_REPORT}.md`.
+Files of note: `backend/src/llm_chain.py`, `backend/src/crewai_layer/chain_llm.py`, `backend/src/crewai_layer/crew.py`,
+`backend/src/evaluation/{run_eval,report}.py`, `backend/src/data/custom_fixtures/response_cases.py`, `backend/src/data/schemas.py`,
+`backend/src/api/{runner,servers,events,main}.py`, `frontend/src/**`, `docs/{evaluation_report,prompt_iterations,viva_demo_script,PHASE12_REPORT}.md`.

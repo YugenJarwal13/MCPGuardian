@@ -4,7 +4,7 @@
     {
       "name": "guardian-api",
       "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "uvicorn", "src.api.main:app", "--host", "127.0.0.1", "--port", "8000"],
+      "runtimeArgs": ["-m", "uvicorn", "--app-dir", "backend", "src.api.main:app", "--host", "127.0.0.1", "--port", "8000"],
       "port": 8000
     },
     {

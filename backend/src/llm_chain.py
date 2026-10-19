@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from src.config import REPO_ROOT, settings
+from src.config import BACKEND_ROOT, settings
 
 log = logging.getLogger(__name__)
 
@@ -270,7 +270,7 @@ class ChainLLM:
         self._bucket = _Bucket(rpm)
         if use_cache is None:
             use_cache = os.environ.get("LLM_CACHE", "on").lower() != "off"
-        self._cache = _Cache(cache_path or (REPO_ROOT / "logs" / "llm_cache.jsonl")) if use_cache else None
+        self._cache = _Cache(cache_path or (BACKEND_ROOT / "logs" / "llm_cache.jsonl")) if use_cache else None
         self._lock = threading.Lock()
         self.events: list[str] = []          # human-readable chain events (disabled slots, quota)
 

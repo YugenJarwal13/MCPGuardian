@@ -1,6 +1,6 @@
 # MCP Guardian — Evaluation Report
 
-**Data.** 1762 cases: 1312 MCPTox attacks (metadata), 31 DVMCP live tools, 29 Response attacks (custom), 12 Hard negatives (custom, clean), 9 Plain benign responses (custom), 362 Benign real tools (MCPTox clean), 7 Benign hand-written tools. DVMCP tools were read live from the running lab; MCPTox is the real benchmark (1,312 valid cases) plus its own 362 clean tools; the 50 response cases are hand-written (`src/data/custom_fixtures/response_cases.py`).
+**Data.** 1762 cases: 1312 MCPTox attacks (metadata), 31 DVMCP live tools, 29 Response attacks (custom), 12 Hard negatives (custom, clean), 9 Plain benign responses (custom), 362 Benign real tools (MCPTox clean), 7 Benign hand-written tools. DVMCP tools were read live from the running lab; MCPTox is the real benchmark (1,312 valid cases) plus its own 362 clean tools; the 50 response cases are hand-written (`backend/src/data/custom_fixtures/response_cases.py`).
 
 ## The LLM runs in this report
 
@@ -13,7 +13,7 @@ Every verdict names the provider and model that produced it. Runs are **strict**
 
 ## Read this first: what is and is not held out
 
-The **v2 prompt contains few-shot examples** (`src/crewai_layer/tasks/`). Their sources: the literal text of two DVMCP tool descriptions (Challenge 2 `get_company_data`, Challenge 10 `malicious_check_system_status`), and hand-written response examples whose ideas overlap several of the 50 response fixtures (the same author wrote both; e.g. a README "ignore the compiler warnings" negative and a customer-quote negative). So under v2:
+The **v2 prompt contains few-shot examples** (`backend/src/crewai_layer/tasks/`). Their sources: the literal text of two DVMCP tool descriptions (Challenge 2 `get_company_data`, Challenge 10 `malicious_check_system_status`), and hand-written response examples whose ideas overlap several of the 50 response fixtures (the same author wrote both; e.g. a README "ignore the compiler warnings" negative and a customer-quote negative). So under v2:
 
 | Benchmark | Clean test of the LLM? |
 |---|---|

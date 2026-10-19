@@ -7,8 +7,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 PY="${PYTHON:-python}"
-[ -x .venv/Scripts/python ] && PY=.venv/Scripts/python
-[ -x .venv/bin/python ] && PY=.venv/bin/python
+for cand in .venv/Scripts/python .venv/bin/python ../.venv/Scripts/python ../.venv/bin/python; do
+  [ -x "$cand" ] && PY="$cand" && break
+done
 
 port_up() { (echo > /dev/tcp/127.0.0.1/9001) 2>/dev/null; }
 
@@ -28,4 +29,4 @@ if [ -n "$LAB_PID" ]; then
   kill "$LAB_PID" 2>/dev/null || true
 fi
 
-echo "Reports written to src/evaluation/reports/ and docs/evaluation_report.md"
+echo "Reports written to backend/src/evaluation/reports/ and docs/evaluation_report.md"

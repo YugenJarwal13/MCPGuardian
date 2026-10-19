@@ -12,9 +12,9 @@ from pathlib import Path
 
 from src.adk_layer.behavioral_anomaly_agent import update_fingerprint_and_score
 from src.adk_layer.state.session_schema import ToolFingerprint
-from src.config import REPO_ROOT
+from src.config import BACKEND_ROOT
 
-OUT_PNG = REPO_ROOT / "src" / "evaluation" / "reports" / "fingerprint_drift.png"
+OUT_PNG = BACKEND_ROOT / "src" / "evaluation" / "reports" / "fingerprint_drift.png"
 
 
 def compute_drift_series() -> dict:

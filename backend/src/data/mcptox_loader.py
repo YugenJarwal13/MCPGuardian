@@ -16,10 +16,10 @@ from __future__ import annotations
 import json
 import re
 
-from src.config import REPO_ROOT
+from src.config import BACKEND_ROOT
 from src.data.schemas import ToolTestCase
 
-MCPTOX_DIR = REPO_ROOT / "external" / "MCPTox-Benchmark"
+MCPTOX_DIR = BACKEND_ROOT / "external" / "MCPTox-Benchmark"
 
 # Categories used ONLY by the small offline sample below. The real benchmark's
 # own risk taxonomy is ``MCPTOX_RISK_SCOPES`` (read from the clone at load time).

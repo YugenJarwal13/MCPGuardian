@@ -9,7 +9,7 @@ import asyncio
 import json
 from collections import Counter
 
-from src.config import REPO_ROOT
+from src.config import BACKEND_ROOT
 from src.data.datasets import load_by_source
 
 
@@ -32,7 +32,7 @@ async def build_manifest() -> dict:
         "total": sum(len(v) for v in by_source.values()),
         "by_category": dict(sorted(by_category.items())),
     }
-    out = REPO_ROOT / "data_manifest.json"
+    out = BACKEND_ROOT / "data_manifest.json"
     out.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return manifest
 

@@ -27,61 +27,113 @@ agent → GuardedMCPClient → interceptor → [CrewAI: static + runtime] →A2A
 
 ## Layout
 
-| Path | What lives here |
+```
+MCPGuardian/
+├── backend/            Python backend: gateway, CrewAI + ADK + A2A layers, API, evaluation, tests
+│   ├── src/            application code (run Python commands from backend/ so `src.*` resolves)
+│   ├── tests/          pytest suite
+│   ├── config/         settings.yaml, allowlist.yaml
+│   ├── scripts/        run_api.sh, run_dvmcp_native.py, run_full_eval.sh, setup_*.sh
+│   ├── logs/           audit trail, LLM answer cache, ADK case store (git-ignored contents)
+│   ├── external/       third-party clones: DVMCP, MCPTox (git-ignored)
+│   ├── requirements.txt · pyproject.toml · docker-compose.yml · data_manifest.json
+├── frontend/           React + Vite UI (separate app; talks to the backend over HTTP/WebSocket)
+├── docs/               architecture, evaluation report, prompt log, viva script, phase reports
+├── .env                your secrets (git-ignored; see "LLM configuration")
+└── README.md
+```
+
+| Backend path | What lives here |
 |---|---|
-| `src/mcp_gateway/` | The interception layer (`GuardedMCPClient`, `GuardianInterceptor`) |
-| `src/crewai_layer/` | Static-analysis + runtime-inspection agents, tasks, verdict schema |
-| `src/adk_layer/` | Behavioral-anomaly agent, ADK state stores, enforcement callbacks |
-| `src/a2a_bridge/` | CrewAI verdict → A2A message → ADK pipeline |
-| `src/data/` | Loaders for DVMCP / MCPTox / benign / custom test cases |
-| `src/evaluation/` | Metrics, ablation harness, report generation |
-| `src/dashboard/` | Streamlit audit-trail viewer |
-| `src/demo_agent/` | End-to-end demo agent using Guardian-wrapped tools |
-| `external/` | Third-party clones (git-ignored, not authored here) |
-| `docs/` | Architecture, evaluation report, viva demo script |
+| `backend/src/mcp_gateway/` | The interception layer (`GuardedMCPClient`, `GuardianInterceptor`) |
+| `backend/src/crewai_layer/` | Static-analysis + runtime-inspection agents, tasks, verdict schema |
+| `backend/src/adk_layer/` | Behavioral-anomaly agent, ADK state stores, enforcement callbacks |
+| `backend/src/a2a_bridge/` | CrewAI verdict → A2A message → ADK case manager |
+| `backend/src/api/` | FastAPI + WebSocket live-pipeline API used by the frontend |
+| `backend/src/llm_chain.py` | The OpenRouter → Ollama LLM fallback chain |
+| `backend/src/data/` | Loaders for DVMCP / MCPTox / benign / custom test cases |
+| `backend/src/evaluation/` | Metrics, evaluation runner, report generation |
+| `backend/src/dashboard/` | Streamlit audit-trail viewer |
+| `backend/src/demo_agent/` | End-to-end demo agent using Guardian-wrapped tools |
 
 ## Quick start
 
+### 1. Backend setup (once)
+
 ```bash
+cd backend
 python -m venv .venv
-source .venv/bin/activate            # Windows: .venv\Scripts\activate
+source .venv/bin/activate            # Windows PowerShell: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-cp .env.example .env                 # then fill in your LLM key(s) — see "LLM configuration"
 ```
 
-Sanity-check the three frameworks (Phase 0):
+Create your `.env` (git-ignored) in the **repo root** (or in `backend/`; `backend/.env` wins if both
+exist) and fill in your LLM key(s) — see [LLM configuration](#llm-configuration). Without any key
+everything still runs on the deterministic detectors.
+
+Run the test suite (no LLM keys or network needed):
 
 ```bash
-python scratch/toy_crewai.py         # prints something containing "ready"
-python scratch/toy_adk.py
-python scratch/toy_mcp_client.py     # lists tools from a reference MCP server
+cd backend
+python -m pytest -q
 ```
 
-Run the deterministic test suite (no LLM keys required):
+Fetch the benchmark data and start the DVMCP challenge lab (only needed for the live demo and for
+evaluation runs):
 
 ```bash
-pytest tests -q
+cd backend
+bash scripts/setup_mcptox.sh                 # clones MCPTox into backend/external/
+bash scripts/setup_dvmcp.sh                  # clones DVMCP; builds/runs Docker if present
+python scripts/run_dvmcp_native.py           # no Docker: ports 9001-9010, 127.0.0.1 only
 ```
 
-Bring up the DVMCP challenge lab and the benchmark:
+The native launcher serves upstream's poisoned `server.py` challenge modules by default
+(`--variant sse` reproduces the Docker image, whose tool descriptions are simplified and carry no poison).
+
+### 2. Frontend setup (once)
 
 ```bash
-bash scripts/setup_mcptox.sh
-bash scripts/setup_dvmcp.sh                 # clones DVMCP; builds/runs Docker if present
-python scripts/run_dvmcp_native.py          # no Docker: same ports 9001-9010, 127.0.0.1 only
+cd frontend
+npm install
 ```
 
-The native launcher serves upstream's poisoned `server.py` challenge modules by
-default (`--variant sse` reproduces the Docker image, whose tool descriptions are
-simplified and carry no poison).
+## Starting the application
 
-Launch the historical audit-log dashboard:
+Open **three terminals** from the repo root. Start them in this order.
+
+| # | Terminal | Command | Serves |
+|---|---|---|---|
+| 1 | DVMCP lab *(optional — live poisoned MCP servers)* | `cd backend && python scripts/run_dvmcp_native.py` | `127.0.0.1:9001-9010` |
+| 2 | **Backend API** | `cd backend && bash scripts/run_api.sh` | `http://127.0.0.1:8000` (REST + WebSocket, plus the A2A case manager on a free local port) |
+| 3 | **Frontend** | `cd frontend && npm run dev` | `http://localhost:5173` |
+
+Then open **http://localhost:5173**.
+
+Notes:
+
+* No bash (PowerShell)? Terminal 2 is just
+  `cd backend; python -m uvicorn src.api.main:app --host 127.0.0.1 --port 8000`
+  (from the repo root: `python -m uvicorn --app-dir backend src.api.main:app --port 8000`).
+  Terminal 3 can also be `bash frontend/scripts/run_frontend.sh`.
+* The frontend dev server proxies `/servers`, `/health` and `/ws` to `:8000`. Point it elsewhere with
+  `GUARDIAN_API=http://host:port npm run dev`.
+* One-process alternative: `cd frontend && npm run build`, then the backend also serves the built UI at
+  `http://127.0.0.1:8000`.
+* Stop everything with `Ctrl+C` in each terminal. The in-process fixture servers work without terminal 1.
+* Historical audit-log dashboard (optional): `cd backend && streamlit run src/dashboard/app.py`.
+
+Run evaluations and other Python tools from `backend/`, for example:
 
 ```bash
-streamlit run src/dashboard/app.py
+cd backend
+python -m src.evaluation.run_eval                   # deterministic baseline (DVMCP lab must be running)
+python -m src.evaluation.run_eval --llm --limit 30  # LLM pipeline on a balanced sample
+python -m src.evaluation.run_eval --report-only     # rebuild docs/evaluation_report.md
+python -m src.demo_agent.run_demo --live            # terminal demo against the live lab
 ```
 
-## Running the live UI
+## The live UI
 
 Two pages, one light/dark-themed app (the theme toggle persists across refreshes):
 
@@ -96,16 +148,9 @@ Two pages, one light/dark-themed app (the theme toggle persists across refreshes
   pick one tool and run the full pipeline on it. *Basic version:* stdio servers, authenticated
   servers and multi-call sessions are not supported yet (the page says so).
 
-```bash
-python scripts/run_dvmcp_native.py   # terminal 1 — live DVMCP challenges (optional)
-bash scripts/run_api.sh              # terminal 2 — FastAPI + WS on :8000 (+ A2A case manager)
-bash scripts/run_frontend.sh         # terminal 3 — React/Vite on http://localhost:5173
-```
-
 In-process fixture servers (clean reference, tricky-but-clean data, offline attack stand-ins) work
-without the lab. Every streamed event is also written to `logs/audit_trail.jsonl` (layer
-`pipeline_event`), so the Streamlit dashboard shows the same runs. `npm --prefix frontend run build`
-lets the API serve the UI itself at http://127.0.0.1:8000.
+without the lab. Every streamed event is also written to `backend/logs/audit_trail.jsonl` (layer
+`pipeline_event`), so the Streamlit dashboard shows the same runs.
 
 ## LLM configuration
 
@@ -122,7 +167,7 @@ LLM_FALLBACK_MODEL=qwen3:4b
 LOCAL_LLM_ENDPOINT=http://localhost:11434
 ```
 
-**The fallback chain** (`src/llm_chain.py`): primary model → fallback models → local Ollama. Each model has
+**The fallback chain** (`backend/src/llm_chain.py`): primary model → fallback models → local Ollama. Each model has
 its own structured-output method (`response_format` = JSON schema, `tool_call` = a forced function call,
 `json_parse` = JSON in plain text, `ollama_format` = Ollama's schema constraint). A slot that fails
 *permanently* (HTTP 400/401/403/404) is disabled for the process; a daily-quota 429 disables the free tier
@@ -136,7 +181,7 @@ is skipped at runtime).
 **Forcing a provider for one run, without editing `.env`:**
 
 ```bash
-LLM_PROVIDER=ollama python -m src.evaluation.run_eval --llm --name ollama     # local qwen3:4b only
+cd backend && LLM_PROVIDER=ollama python -m src.evaluation.run_eval --llm --name ollama   # local qwen3:4b only
 GUARDIAN_PROMPT_VERSION=v1 python -m src.evaluation.run_eval --llm --name llm_v1
 ```
 
@@ -144,7 +189,7 @@ A shell variable always wins over `.env`; `LLM_PROVIDER=ollama` never touches Op
 
 **Quotas.** A *free-tier* OpenRouter key allows 50 `:free` requests/day (HTTP 429 `free-models-per-day`,
 resets 00:00 UTC; $10 of credits lifts it to 1,000/day). Evaluations are resumable — every model answer is
-cached in `logs/llm_cache.jsonl`, so re-running the same command continues where a quota stopped it.
+cached in `backend/logs/llm_cache.jsonl`, so re-running the same command continues where a quota stopped it.
 Gemini is not used (its block in `.env` is commented out).
 
 Every audit record of an LLM verdict carries `engine`, `provider`, `model` and `method`.

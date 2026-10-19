@@ -21,10 +21,10 @@ from pathlib import Path
 from typing import Optional
 
 from src.adk_layer.callbacks.enforcement_callbacks import GuardianDecision, combine_verdicts
-from src.config import REPO_ROOT, allowlist
+from src.config import BACKEND_ROOT, REPO_ROOT, allowlist
 from src.crewai_layer.schemas import InspectionVerdict
 
-REPORTS_DIR = REPO_ROOT / "src" / "evaluation" / "reports"
+REPORTS_DIR = BACKEND_ROOT / "src" / "evaluation" / "reports"
 CONFIGS = {"static_only": (True, False), "runtime_only": (False, True), "combined": (True, True)}
 GROUPS = [
     ("mcptox", "MCPTox attacks (metadata)"), ("dvmcp", "DVMCP live tools"),
@@ -230,7 +230,7 @@ def write_report() -> Path:
             f"**Data.** {len(det_recs)} cases: " + ", ".join(f"{counts[g]} {lbl}" for g, lbl in GROUPS if counts[g])
             + ". DVMCP tools were read live from the running lab; MCPTox is the real benchmark "
             "(1,312 valid cases) plus its own 362 clean tools; the 50 response cases are hand-written "
-            "(`src/data/custom_fixtures/response_cases.py`).", ""]
+            "(`backend/src/data/custom_fixtures/response_cases.py`).", ""]
 
     # ---- which LLM runs exist
     if not llm_runs:
@@ -250,7 +250,7 @@ def write_report() -> Path:
 
     if llm_runs:
         lines += ["## Read this first: what is and is not held out", "",
-                  "The **v2 prompt contains few-shot examples** (`src/crewai_layer/tasks/`). Their sources: the literal text of "
+                  "The **v2 prompt contains few-shot examples** (`backend/src/crewai_layer/tasks/`). Their sources: the literal text of "
                   "two DVMCP tool descriptions (Challenge 2 `get_company_data`, Challenge 10 `malicious_check_system_status`), "
                   "and hand-written response examples whose ideas overlap several of the 50 response fixtures (the same "
                   "author wrote both; e.g. a README \"ignore the compiler warnings\" negative and a customer-quote "

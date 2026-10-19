@@ -10,12 +10,12 @@ remembers your choice (use dark if the room is dim).
 Three terminals, left running:
 
 ```bash
-python scripts/run_dvmcp_native.py   # (A) live DVMCP challenges on 127.0.0.1:9001-9010
-bash scripts/run_api.sh              # (B) FastAPI + WebSocket on :8000, A2A case manager
-bash scripts/run_frontend.sh         # (C) React UI on http://localhost:5173
+python backend/scripts/run_dvmcp_native.py   # (A) live DVMCP challenges on 127.0.0.1:9001-9010
+bash backend/scripts/run_api.sh              # (B) FastAPI + WebSocket on :8000, A2A case manager
+bash backend/scripts/run_frontend.sh         # (C) React UI on http://localhost:5173
 ```
 
-Optional fourth: `streamlit run src/dashboard/app.py` (historical audit log).
+Optional fourth: `streamlit run backend/src/dashboard/app.py` (historical audit log).
 
 Check before you start:
 
@@ -111,14 +111,14 @@ free model API is capped at 50 requests a day; every verdict names the model tha
 unanswered cases are excluded rather than relabelled."*
 
 **11. Architecture questions: where things live.**
-- Real Google ADK: `src/adk_layer/behavioral_anomaly_agent.py` (`LlmAgent` judge),
-  `src/adk_layer/callbacks/enforcement_callbacks.py` (`before_tool_callback`),
-  `src/adk_layer/pipeline_manager.py` (ADK `BaseAgent` + `Runner` + SQLite session state).
-- Real A2A: `src/a2a_bridge/a2a_server.py` (`to_a2a` server) and `src/a2a_bridge/bridge.py`
+- Real Google ADK: `backend/src/adk_layer/behavioral_anomaly_agent.py` (`LlmAgent` judge),
+  `backend/src/adk_layer/callbacks/enforcement_callbacks.py` (`before_tool_callback`),
+  `backend/src/adk_layer/pipeline_manager.py` (ADK `BaseAgent` + `Runner` + SQLite session state).
+- Real A2A: `backend/src/a2a_bridge/a2a_server.py` (`to_a2a` server) and `backend/src/a2a_bridge/bridge.py`
   (`RemoteA2AClient.send`, JSON-RPC `message/send`).
-- The LLM chain behind the CrewAI agents: `src/llm_chain.py` (OpenRouter models, each with its own structured
-  output method, then local Ollama) and `src/crewai_layer/chain_llm.py`.
-- One audit trail: every UI event is also a `pipeline_event` row in `logs/audit_trail.jsonl`, with the
+- The LLM chain behind the CrewAI agents: `backend/src/llm_chain.py` (OpenRouter models, each with its own structured
+  output method, then local Ollama) and `backend/src/crewai_layer/chain_llm.py`.
+- One audit trail: every UI event is also a `pipeline_event` row in `backend/logs/audit_trail.jsonl`, with the
   provider and model that answered.
 
 ## Fallbacks if something breaks
@@ -130,5 +130,5 @@ unanswered cases are excluded rather than relabelled."*
 - **LLM quota exhausted or no key:** switch *Use LLM agents* off; the badges say `heuristic`. Say so. The
   architecture is identical; only the reasoning engine differs. The local model works too
   (`LLM_PROVIDER=ollama`) but needs about a minute per call.
-- **An LLM call hangs:** after `timeouts.*_s` (60 s, `config/settings.yaml`) the stage shows *LLM timed out →
+- **An LLM call hangs:** after `timeouts.*_s` (60 s, `backend/config/settings.yaml`) the stage shows *LLM timed out →
   escalate*, and you get *Approve / Deny* instead of a silent allow. Deny it and move on.

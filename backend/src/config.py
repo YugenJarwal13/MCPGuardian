@@ -18,9 +18,12 @@ from typing import Any
 
 import yaml
 
-# Repo root = two levels up from this file (src/config.py -> src -> repo root).
-REPO_ROOT = Path(__file__).resolve().parent.parent
-CONFIG_DIR = REPO_ROOT / "config"
+# Layout: <repo>/backend/src/config.py  ->  BACKEND_ROOT = <repo>/backend, REPO_ROOT = <repo>.
+# Backend-owned files (config/, logs/, external/, reports) hang off BACKEND_ROOT; the
+# frontend build and the markdown docs hang off REPO_ROOT.
+BACKEND_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = BACKEND_ROOT.parent
+CONFIG_DIR = BACKEND_ROOT / "config"
 
 
 def _load_dotenv() -> None:
@@ -28,9 +31,11 @@ def _load_dotenv() -> None:
         from dotenv import load_dotenv
     except ImportError:  # dotenv is optional; env may already be set another way.
         return
-    env_path = REPO_ROOT / ".env"
-    if env_path.exists():
-        load_dotenv(env_path)
+    # backend/.env wins if present; the repo-root .env is the other supported location.
+    # load_dotenv never overrides variables already set in the shell.
+    for env_path in (BACKEND_ROOT / ".env", REPO_ROOT / ".env"):
+        if env_path.exists():
+            load_dotenv(env_path)
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
@@ -59,7 +64,7 @@ def resolve_path(key: str) -> Path:
     rel = settings().get("paths", {}).get(key)
     if rel is None:
         raise KeyError(f"paths.{key} not defined in settings.yaml")
-    path = REPO_ROOT / rel
+    path = BACKEND_ROOT / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 

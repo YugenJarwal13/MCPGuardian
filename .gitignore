@@ -20,14 +20,16 @@ env/
 htmlcov/
 
 # Runtime-generated artifacts
-logs/*.jsonl
-logs/*.db
-logs/*.log
-src/evaluation/reports/*.csv
+backend/logs/*.jsonl
+backend/logs/*.db
+backend/logs/*.log
+backend/src/evaluation/reports/*.csv
+frontend/node_modules/
+frontend/dist/
 
 # Third-party clones (kept out of our authored history)
-external/damn-vulnerable-MCP-server/
-external/MCPTox-Benchmark/
+backend/external/damn-vulnerable-MCP-server/
+backend/external/MCPTox-Benchmark/
 
 # OS / editor
 .DS_Store
