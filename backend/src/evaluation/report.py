@@ -156,7 +156,7 @@ def _group_table(rows: list[tuple[str, list[dict], str]], cfg: str, scope_mode: 
 
 
 def _runs() -> dict:
-    names = ("deterministic", "llm", "ollama", "ollama_v1", "ollama_v2_sub", "ollama_mcptox",
+    names = ("deterministic", "llm", "ollama", "ollama_full", "ollama_v1", "ollama_v2_sub", "ollama_mcptox",
              "prompt_v1", "prompt_v2")
     return {n: load_run(n) for n in names}
 
@@ -180,7 +180,7 @@ def _label_for(records: list[dict]) -> str:
 def _llm_runs(runs: dict) -> list[tuple[str, dict, list[dict], list[dict]]]:
     """[(label, header, all_records, answered_records)] for every LLM run that has answers."""
     out = []
-    for name in ("llm", "ollama"):
+    for name in ("llm", "ollama", "ollama_full"):
         run = runs.get(name)
         if not run:
             continue
