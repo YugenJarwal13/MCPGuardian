@@ -156,8 +156,10 @@ def _group_table(rows: list[tuple[str, list[dict], str]], cfg: str, scope_mode: 
 
 
 def _runs() -> dict:
-    names = ("deterministic", "llm", "ollama", "ollama_full", "ollama_v1", "ollama_v2_sub", "ollama_mcptox",
-             "prompt_v1", "prompt_v2")
+    names = ["deterministic", "llm", "ollama", "ollama_v1", "ollama_v2_sub", "ollama_mcptox",
+             "prompt_v1", "prompt_v2"]
+    # any full-set local run, e.g. cases_ollama_full.jsonl (qwen3:4b), cases_ollama_full_14b.jsonl
+    names += sorted(p.stem[len("cases_"):] for p in REPORTS_DIR.glob("cases_ollama_full*.jsonl"))
     return {n: load_run(n) for n in names}
 
 
@@ -180,7 +182,8 @@ def _label_for(records: list[dict]) -> str:
 def _llm_runs(runs: dict) -> list[tuple[str, dict, list[dict], list[dict]]]:
     """[(label, header, all_records, answered_records)] for every LLM run that has answers."""
     out = []
-    for name in ("llm", "ollama", "ollama_full"):
+    full_runs = sorted(n for n in runs if n.startswith("ollama_full"))
+    for name in ("llm", "ollama", *full_runs):
         run = runs.get(name)
         if not run:
             continue
