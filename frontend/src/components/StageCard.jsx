@@ -11,7 +11,7 @@ function escapeRegExp(s) {
 }
 
 /** Text with every flagged phrase wrapped in <mark>. */
-function Highlighted({ text, phrases }) {
+export function Highlighted({ text, phrases }) {
   const usable = (phrases || []).filter((p) => p && p.trim().length > 1);
   if (!usable.length) return <>{text}</>;
   const re = new RegExp(`(${usable.map(escapeRegExp).join("|")})`, "i");

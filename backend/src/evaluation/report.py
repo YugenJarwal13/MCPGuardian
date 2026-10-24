@@ -270,7 +270,7 @@ def write_report() -> Path:
     # ---- headline per LLM run
     for label, hdr, recs, ans in llm_runs:
         rows = [(label, ans, "primary"), ("Heuristic — same cases", ans, "heuristic")]
-        lines += [f"## Headline — {label} vs the deterministic baseline (detectors only)", "",
+        lines += [f"## Headline — {label}, run `{hdr['name']}` ({len(ans)} cases) vs the deterministic baseline (detectors only)", "",
                   "Only the static/runtime verdicts decide. Group cells show recall (attack groups) or false-positive "
                   "rate (clean groups) with Wilson 95% intervals.", ""]
         lines += _prf_table(rows + ([("Heuristic — full set", det[1], "primary")] if det else []), None)
@@ -433,4 +433,6 @@ def write_report() -> Path:
 
     out = REPO_ROOT / "docs" / "evaluation_report.md"
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    from src.evaluation.summary import write_summary   # the web page reads the same numbers
+    write_summary()
     return out

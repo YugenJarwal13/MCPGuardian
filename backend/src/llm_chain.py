@@ -69,6 +69,7 @@ VERDICT_SCHEMA = {
 }
 
 METHODS = ("response_format", "tool_call", "json_parse", "ollama_format")
+PROVIDER_ERROR_COOLDOWN_S = 300      # rest after an upstream "Provider returned error" (HTTP 400 wrapper)
 
 
 class ChainError(RuntimeError):
@@ -338,6 +339,16 @@ class ChainLLM:
                 tried.append(f"{slot.label}: unparseable output")
                 continue
             msg = json.dumps(data)[:300].lower()
+            if status == 400 and "provider returned error" in msg:
+                # OpenRouter's wrapper for an upstream hiccup, not a bad request: retry once, then rest
+                # the slot for a few minutes instead of disabling it for the whole process.
+                tried.append(f"{slot.label}: upstream provider error")
+                if attempt == 0:
+                    continue
+                with self._lock:
+                    slot.disabled_until = time.monotonic() + PROVIDER_ERROR_COOLDOWN_S
+                    self.events.append(f"slot {slot.label} resting {PROVIDER_ERROR_COOLDOWN_S // 60} min after an upstream error")
+                return None
             if status in (400, 401, 403, 404):
                 self._disable(slot, f"HTTP {status}: {self._err(data)}")
                 tried.append(f"{slot.label}: HTTP {status} (disabled)")

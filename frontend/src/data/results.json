@@ -1,0 +1,272 @@
+{
+  "run": {
+    "name": "ollama_full",
+    "model": "qwen3:4b",
+    "prompt_version": "v2",
+    "cases": 1762,
+    "answered": 1762,
+    "unanswered": 0,
+    "workers": 1,
+    "duration_minutes": 568.9333333333333,
+    "started": "2026-10-22T05:01:45+0530",
+    "finished": "2026-10-22T14:30:41+0530",
+    "gpu": "NVIDIA H200 (MIG slice)",
+    "cluster": "BMU Kubernetes cluster",
+    "runtime": "Ollama",
+    "median_call_seconds": 19.305300000000003
+  },
+  "dataset": {
+    "total": 1762,
+    "groups": {
+      "mcptox": {
+        "label": "MCPTox attacks (metadata)",
+        "n": 1312
+      },
+      "dvmcp": {
+        "label": "DVMCP live tools",
+        "n": 31
+      },
+      "custom_atk": {
+        "label": "Response attacks (custom)",
+        "n": 29
+      },
+      "custom_hn": {
+        "label": "Hard negatives (custom, clean)",
+        "n": 12
+      },
+      "custom_ben": {
+        "label": "Plain benign responses (custom)",
+        "n": 9
+      },
+      "benign_real": {
+        "label": "Benign real tools (MCPTox clean)",
+        "n": 362
+      },
+      "benign_hand": {
+        "label": "Benign hand-written tools",
+        "n": 7
+      }
+    }
+  },
+  "llm": {
+    "static_only": {
+      "n": 1762,
+      "tp": 999,
+      "fp": 14,
+      "fn": 373,
+      "precision": 0.9861796643632774,
+      "recall": 0.728134110787172,
+      "f1": 0.8377358490566039
+    },
+    "runtime_only": {
+      "n": 1762,
+      "tp": 22,
+      "fp": 0,
+      "fn": 1350,
+      "precision": 1.0,
+      "recall": 0.016034985422740525,
+      "f1": 0.03156384505021521
+    },
+    "combined": {
+      "n": 1762,
+      "tp": 1021,
+      "fp": 14,
+      "fn": 351,
+      "precision": 0.9864734299516909,
+      "recall": 0.7441690962099126,
+      "f1": 0.8483589530535938
+    }
+  },
+  "regex": {
+    "static_only": {
+      "n": 1762,
+      "tp": 526,
+      "fp": 12,
+      "fn": 846,
+      "precision": 0.9776951672862454,
+      "recall": 0.38338192419825073,
+      "f1": 0.5507853403141362
+    },
+    "runtime_only": {
+      "n": 1762,
+      "tp": 10,
+      "fp": 5,
+      "fn": 1362,
+      "precision": 0.6666666666666666,
+      "recall": 0.007288629737609329,
+      "f1": 0.014419610670511894
+    },
+    "combined": {
+      "n": 1762,
+      "tp": 536,
+      "fp": 17,
+      "fn": 836,
+      "precision": 0.969258589511754,
+      "recall": 0.39067055393586003,
+      "f1": 0.5568831168831169
+    }
+  },
+  "groups": {
+    "mcptox": {
+      "label": "MCPTox attacks (metadata)",
+      "n": 1312,
+      "kind": "recall",
+      "llm": {
+        "flagged": 994,
+        "rate": 0.7576219512195121,
+        "lo": 0.7337035496715176,
+        "hi": 0.7800360980185994
+      },
+      "regex": {
+        "flagged": 521,
+        "rate": 0.39710365853658536
+      }
+    },
+    "dvmcp": {
+      "label": "DVMCP live tools",
+      "n": 31,
+      "kind": "recall",
+      "llm": {
+        "flagged": 5,
+        "rate": 0.16129032258064516,
+        "lo": 0.07092519905439934,
+        "hi": 0.3263470272497887
+      },
+      "regex": {
+        "flagged": 5,
+        "rate": 0.16129032258064516
+      }
+    },
+    "custom_atk": {
+      "label": "Response attacks (custom)",
+      "n": 29,
+      "kind": "recall",
+      "llm": {
+        "flagged": 22,
+        "rate": 0.7586206896551724,
+        "lo": 0.578920477816713,
+        "hi": 0.8778173181493787
+      },
+      "regex": {
+        "flagged": 10,
+        "rate": 0.3448275862068966
+      }
+    },
+    "custom_hn": {
+      "label": "Hard negatives (custom, clean)",
+      "n": 12,
+      "kind": "fpr",
+      "llm": {
+        "flagged": 0,
+        "rate": 0.0,
+        "lo": 0.0,
+        "hi": 0.2425007574992425
+      },
+      "regex": {
+        "flagged": 5,
+        "rate": 0.4166666666666667
+      }
+    },
+    "custom_ben": {
+      "label": "Plain benign responses (custom)",
+      "n": 9,
+      "kind": "fpr",
+      "llm": {
+        "flagged": 0,
+        "rate": 0.0,
+        "lo": 0.0,
+        "hi": 0.2991527535509594
+      },
+      "regex": {
+        "flagged": 0,
+        "rate": 0.0
+      }
+    },
+    "benign_real": {
+      "label": "Benign real tools (MCPTox clean)",
+      "n": 362,
+      "kind": "fpr",
+      "llm": {
+        "flagged": 14,
+        "rate": 0.03867403314917127,
+        "lo": 0.023174584767537944,
+        "hi": 0.06386199062465364
+      },
+      "regex": {
+        "flagged": 12,
+        "rate": 0.03314917127071823
+      }
+    },
+    "benign_hand": {
+      "label": "Benign hand-written tools",
+      "n": 7,
+      "kind": "fpr",
+      "llm": {
+        "flagged": 0,
+        "rate": 0.0,
+        "lo": 0.0,
+        "hi": 0.35433884297520657
+      },
+      "regex": {
+        "flagged": 0,
+        "rate": 0.0
+      }
+    }
+  },
+  "categories": [
+    {
+      "category": "privacy_leakage",
+      "n": 273,
+      "llm": 0.663003663003663,
+      "regex": 0.37362637362637363
+    },
+    {
+      "category": "information_manipulation",
+      "n": 269,
+      "llm": 0.8066914498141264,
+      "regex": 0.39776951672862454
+    },
+    {
+      "category": "service_disruption",
+      "n": 196,
+      "llm": 0.7602040816326531,
+      "regex": 0.3469387755102041
+    },
+    {
+      "category": "infrastructure_damage",
+      "n": 122,
+      "llm": 0.6721311475409836,
+      "regex": 0.39344262295081966
+    },
+    {
+      "category": "data_tampering",
+      "n": 117,
+      "llm": 0.717948717948718,
+      "regex": 0.358974358974359
+    },
+    {
+      "category": "credential_leakage",
+      "n": 115,
+      "llm": 0.8,
+      "regex": 0.6347826086956522
+    },
+    {
+      "category": "code_injection",
+      "n": 63,
+      "llm": 0.9523809523809523,
+      "regex": 0.38095238095238093
+    },
+    {
+      "category": "instruction_tampering",
+      "n": 57,
+      "llm": 0.7719298245614035,
+      "regex": 0.38596491228070173
+    }
+  ],
+  "agreement": {
+    "llm_caught_regex_missed": 501,
+    "regex_caught_llm_missed": 16
+  },
+  "regex_rules": 9,
+  "has_deterministic": true
+}

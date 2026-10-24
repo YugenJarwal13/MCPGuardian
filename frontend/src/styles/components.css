@@ -1,21 +1,3 @@
-/* ------------------------------------------------------------------ nav ---- */
-.nav {
-  position: sticky; top: 0; z-index: 20;
-  background: var(--nav-bg); backdrop-filter: saturate(1.4) blur(12px);
-  border-bottom: 1px solid var(--border);
-}
-.nav-inner { max-width: 1160px; margin: 0 auto; padding: 0 24px; height: 58px; display: flex; align-items: center; gap: 28px; }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: -0.01em; color: var(--text); }
-.brand:hover { text-decoration: none; }
-.brand svg { color: var(--accent); }
-.nav-links { display: flex; gap: 4px; }
-.nav-link {
-  padding: 6px 12px; border-radius: var(--r-sm); color: var(--text-2); font-size: var(--fs-sm); font-weight: 500;
-  transition: background var(--t-fast), color var(--t-fast);
-}
-.nav-link:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
-.nav-link[aria-current="page"] { background: var(--surface-3); color: var(--text); }
-.nav-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .pill {
   display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
   border: 1px solid var(--border); background: var(--surface); color: var(--text-2); font-size: var(--fs-xs);
@@ -24,14 +6,13 @@
 .pill.ok .dot { background: var(--pass); }
 .pill.warn .dot { background: var(--flag); }
 .icon-btn {
-  width: 34px; height: 34px; display: grid; place-items: center; border-radius: var(--r-sm);
+  width: 38px; height: 38px; display: grid; place-items: center; border-radius: 12px;
   border: 1px solid var(--border); background: var(--surface); color: var(--text-2);
   transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
 }
 .icon-btn:hover { background: var(--surface-2); color: var(--text); border-color: var(--border-strong); }
 .icon-btn svg { transition: transform var(--t-med) var(--ease); }
 .icon-btn:active svg { transform: rotate(25deg) scale(0.92); }
-@media (max-width: 720px) { .nav-inner { gap: 12px; padding: 0 14px; } .pill.hide-sm { display: none; } }
 
 /* ----------------------------------------------------------------- layout --- */
 .workspace { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 28px; align-items: start; }
@@ -83,15 +64,15 @@
 .switch input:checked { background: var(--accent); border-color: var(--accent); }
 .switch input:checked::after { transform: translateX(14px); background: var(--accent-ink); }
 .btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 16px; border-radius: var(--r-sm);
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 16px; border-radius: 12px;
   border: 1px solid var(--border-strong); background: var(--surface); font-weight: 550; font-size: var(--fs-sm);
   transition: background var(--t-fast), border-color var(--t-fast), transform var(--t-fast), filter var(--t-fast);
 }
 .btn:hover:not(:disabled) { background: var(--surface-2); }
 .btn:active:not(:disabled) { transform: translateY(1px); }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
-.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-.btn.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
+.btn.primary { background: linear-gradient(180deg, var(--accent-2), var(--accent)); color: var(--accent-ink); border-color: var(--accent); box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--accent) 70%, transparent); }
+.btn.primary:hover:not(:disabled) { filter: brightness(1.07); }
 .btn.danger { color: var(--block-ink); border-color: color-mix(in srgb, var(--block) 45%, var(--border)); }
 .btn.danger:hover:not(:disabled) { background: var(--block-soft); }
 .btn.quiet { border-color: transparent; background: transparent; color: var(--text-2); }
@@ -168,11 +149,11 @@
 .typing .dots span:nth-child(2) { animation-delay: 0.15s; } .typing .dots span:nth-child(3) { animation-delay: 0.3s; }
 
 .badge { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border-strong); font-size: var(--fs-xs); font-weight: 500; color: var(--text-2); background: var(--surface); white-space: nowrap; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
-.badge.llm { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); background: var(--accent-soft); }
+.badge.llm { color: var(--accent-text); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); background: var(--accent-soft); }
 .badge.llm .m { font-family: var(--font-mono); font-size: 0.92em; opacity: 0.9; }
 .badge.warn { color: var(--flag-ink); border-color: color-mix(in srgb, var(--flag) 50%, var(--border)); background: var(--flag-soft); }
 .timer { font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
-.timer.live { color: var(--accent); }
+.timer.live { color: var(--accent-text); }
 
 /* expand / collapse — animates real height via grid rows */
 .expand { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--t-med) var(--ease); }
@@ -187,7 +168,7 @@
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { font-family: var(--font-mono); font-size: var(--fs-xs); padding: 2px 8px; border-radius: 6px; background: var(--block-soft); border: 1px solid color-mix(in srgb, var(--block) 35%, var(--border)); color: var(--block-ink); }
 .chip.neutral { background: var(--surface-2); border-color: var(--border); color: var(--text-2); }
-.chip.sel { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); color: var(--accent); }
+.chip.sel { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); color: var(--accent-text); }
 pre.quote { margin: 0; white-space: pre-wrap; word-break: break-word; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px 14px; max-height: 300px; overflow: auto; line-height: 1.55; font-size: var(--fs-sm); }
 mark { background: var(--mark); color: inherit; border-radius: 3px; padding: 0 2px; box-decoration-break: clone; }
 .vpill { display: inline-block; text-transform: uppercase; font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 5px; }

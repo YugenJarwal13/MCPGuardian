@@ -90,6 +90,19 @@ def test_403_disables_slot_permanently_and_falls_through():
     assert [m for m, _ in chain._transport.calls].count("m-dots") == 1      # never retried
 
 
+def test_upstream_provider_error_rests_the_slot_instead_of_disabling_it():
+    flaky = lambda p, s: (400, {}, {"error": {"message": "Provider returned error"}})   # noqa: E731
+    ok = lambda p, s: (200, {}, _ok_response(s))                                         # noqa: E731
+    chain = _chain({"m-dots": flaky, "m-nemo": ok, "m-ink": ok, "qwen3:4b": ok})
+    _, meta = chain.complete("s", "u")
+    assert meta["model"] == "m-nemo"
+    assert [m for m, _ in chain._transport.calls][:2] == ["m-dots", "m-dots"]   # retried once
+    slot = chain.slots[0]
+    assert slot.disabled_reason is None and not slot.usable()                   # resting, not dead
+    slot.disabled_until = 0.0                                                   # cooldown over
+    assert slot.usable()
+
+
 def test_daily_quota_skips_all_free_slots_and_uses_local():
     quota = lambda p, s: (429, {}, {"error": {"message": "Rate limit exceeded: free-models-per-day"}})   # noqa: E731
     ok = lambda p, s: (200, {}, _ok_response(s))                                                          # noqa: E731

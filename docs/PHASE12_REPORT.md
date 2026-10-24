@@ -18,7 +18,7 @@ still pending. Written 2026-10-18.
 | Item | Status |
 |---|---|
 | LLM provider wiring (OpenRouter chain → local Ollama) behind the CrewAI agents | ✅ Done and verified live |
-| Task 5 — evaluation of the **LLM pipeline** | ⚠️ **Done on samples, not the full 1,762 cases** (free-tier quota; CPU-only local model) |
+| Task 5 — evaluation of the **LLM pipeline** | ✅ **Full 1,762-case run done** with the local qwen3:4b on an H200 slice (2026-10-22); the hosted-model run and the v1-vs-v2 comparison remain samples |
 | Task 6 — 50 hand-written tool-response cases | ✅ Done |
 | Task 7 — schema-based scope rule; Challenge 2 left unpatched | ✅ Done; Challenge 2 result measured |
 | Task 8 — UI redesign + "Test a MCP server LIVE" page | ✅ Done, verified in the browser (light + dark) |

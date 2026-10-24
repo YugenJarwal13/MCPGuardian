@@ -1,18 +1,28 @@
 import { useEffect, useState } from "react";
 
-// Tiny hash router: "#/" is the live demo, "#/test-live" is "Test a MCP server LIVE".
-export const ROUTES = { demo: "#/", testLive: "#/test-live" };
+// Tiny hash router. "#/" is the landing page, "#/results" the landing page scrolled to the results,
+// "#/demo" the live demo and "#/test-live" the "check any MCP server" page.
+export const ROUTES = {
+  home: "#/",
+  results: "#/results",
+  demo: "#/demo",
+  testLive: "#/test-live",
+};
 
-function current() {
-  return window.location.hash === ROUTES.testLive ? "testLive" : "demo";
+function parse() {
+  const h = window.location.hash;
+  if (h === ROUTES.demo) return { route: "demo", section: null };
+  if (h === ROUTES.testLive) return { route: "testLive", section: null };
+  if (h === ROUTES.results) return { route: "home", section: "results" };
+  return { route: "home", section: null };
 }
 
 export function useRoute() {
-  const [route, setRoute] = useState(current);
+  const [state, setState] = useState(parse);
   useEffect(() => {
-    const onHash = () => setRoute(current());
+    const onHash = () => setState(parse());
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
-  return route;
+  return state;
 }

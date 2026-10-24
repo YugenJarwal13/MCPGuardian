@@ -1,43 +1,67 @@
 import { useState } from "react";
-import PipelineView from "../components/PipelineView.jsx";
-import VerdictBanner from "../components/VerdictBanner.jsx";
-import { Play } from "../components/Icons.jsx";
+import { Alert, Arrow, Check, Info, Link, Play } from "../components/Icons.jsx";
+import RunView from "../components/RunView.jsx";
 import { usePipelineRun } from "../hooks/usePipelineRun.js";
 
 const EXAMPLES = [
-  ["DVMCP Challenge 2", "http://127.0.0.1:9002/sse"],
-  ["DVMCP Challenge 6", "http://127.0.0.1:9006/sse"],
-  ["DVMCP Challenge 10", "http://127.0.0.1:9010/sse"],
+  ["DVMCP challenge 2", "http://127.0.0.1:9002/sse"],
+  ["DVMCP challenge 6", "http://127.0.0.1:9006/sse"],
+  ["DVMCP challenge 10", "http://127.0.0.1:9010/sse"],
 ];
-
 const NOT_RUN_WHEN_INSPECTING = ["tool_call", "runtime_check", "behavioral_check", "a2a_hop", "enforcement"];
+const clip = (s, n) => (s && s.length > n ? `${s.slice(0, n - 1)}…` : s || "");
 
-/**
- * Basic version of "Test a MCP server LIVE". Step 1 connects to the URL you give and
- * statically inspects every tool it offers (no tool is called). Step 2 lets you pick
- * one tool and run the full pipeline on it. Same PipelineView as the demo page.
- */
+function hostOf(url) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "MCP server";
+  }
+}
+
+function Steps({ step }) {
+  const items = [
+    ["Connect and read every tool", "Guardian opens the connection itself and inspects each description. Nothing is executed."],
+    ["Choose a tool to try", "Optional. Pick one tool and its arguments."],
+    ["Run it through the pipeline", "The call is gated, the answer is scanned, behaviour is checked, a human can veto."],
+  ];
+  return (
+    <div className="steps">
+      {items.map(([t, p], i) => (
+        <div key={t} className={`step${step === i + 1 ? " on" : ""}${step > i + 1 ? " done" : ""}`}>
+          <span className="n">{step > i + 1 ? <Check width={14} height={14} /> : i + 1}</span>
+          <span><b>{t}</b>{p}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function TestLivePage({ health }) {
   const [url, setUrl] = useState("");
   const [useLlm, setUseLlm] = useState(true);
-  const [mode, setMode] = useState("inspect");           // what the current/last run was
+  const [mode, setMode] = useState("inspect");           // what the current / last run was
   const [pickedTool, setPickedTool] = useState(null);
   const [argsText, setArgsText] = useState("{}");
   const [formError, setFormError] = useState(null);
   const { events, running, error, start, approve, reset } = usePipelineRun();
 
   const done = [...events].reverse().find((e) => e.stage === "done");
-  const tools = done?.detail?.inspect_only ? done.detail.tools : null;
+  const inspected = [...events].reverse().find((e) => e.stage === "done" && e.detail?.inspect_only);
+  const tools = inspected ? inspected.detail.tools : null;
+  const badCount = tools ? tools.filter((t) => t.verdict !== "clean").length : 0;
+  const step = mode === "call" && events.length ? 3 : tools ? 2 : events.length ? 1 : 1;
 
   const inspect = () => {
-    if (!/^https?:\/\//i.test(url.trim())) {
-      setFormError("Enter an http:// or https:// MCP endpoint, for example http://127.0.0.1:9002/sse");
+    const u = url.trim();
+    if (!/^https?:\/\//i.test(u)) {
+      setFormError("Enter an http:// or https:// MCP endpoint, for example https://example.com/sse");
       return;
     }
     setFormError(null);
     setMode("inspect");
     setPickedTool(null);
-    start({ server_url: url.trim(), inspect_only: true, use_llm: useLlm });
+    start({ server_url: u, inspect_only: true, use_llm: useLlm });
   };
 
   const pick = (t) => {
@@ -58,87 +82,121 @@ export default function TestLivePage({ health }) {
     start({ server_url: url.trim(), tool_name: pickedTool, arguments: args, use_llm: useLlm });
   };
 
+  const clear = () => {
+    reset();
+    setPickedTool(null);
+    setMode("inspect");
+  };
+
   return (
-    <main className="page">
-      <div className="page-head">
-        <h1>Test a MCP server live</h1>
-        <p>Point the Guardian at an MCP server of your choice. It connects, inspects every tool it offers, and — only if you ask — runs one call through the full pipeline.</p>
-      </div>
-      <div className="stack">
-        <div className="panel">
-          <div className="panel-title">1 · Server to inspect</div>
-          <label className="field">
-            <span>MCP endpoint URL</span>
-            <input className="input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://127.0.0.1:9002/sse"
-              spellCheck={false} disabled={running} onKeyDown={(e) => e.key === "Enter" && !running && inspect()} />
-          </label>
-          <div className="row" style={{ marginTop: 10 }}>
-            <span className="muted" style={{ fontSize: "var(--fs-xs)" }}>Try:</span>
-            {EXAMPLES.map(([label, u]) => (
-              <button key={u} type="button" className="chip neutral" style={{ cursor: "pointer" }} onClick={() => setUrl(u)} disabled={running}>{label}</button>
-            ))}
-          </div>
-          <div className="row" style={{ marginTop: 16 }}>
-            <button type="button" className="btn primary" onClick={inspect} disabled={running || !url.trim()}>
-              {running && mode === "inspect" ? <><span className="spinner" /> Inspecting</> : <><Play /> Run Guardian</>}
-            </button>
-            <label className="switch" title={health?.llm?.available ? "" : "No model configured: heuristic detectors will be used"}>
-              <input type="checkbox" checked={useLlm} onChange={(e) => setUseLlm(e.target.checked)} disabled={running} />
-              Use LLM agents
+    <main className="site">
+      <section className="page-hero">
+        <div className="wrap">
+          <div className="eyebrow">Check any server</div>
+          <h1>Connect to a live MCP server. Find out if it’s safe.</h1>
+          <p className="lead">Paste the web address of an MCP server. Guardian connects, reads every tool it offers with the same AI inspectors, and tells you in plain words whether anything is hiding in there.</p>
+
+          <div className="checker">
+            <label className="urlbox">
+              <Link width={20} height={20} />
+              <span className="sr-only">MCP endpoint URL</span>
+              <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://your-server.example.com/sse" spellCheck={false}
+                disabled={running} onKeyDown={(e) => e.key === "Enter" && !running && url.trim() && inspect()} />
             </label>
-            {events.length > 0 && !running && <button type="button" className="btn quiet" onClick={reset}>Clear</button>}
+            <button type="button" className="btn primary lg" onClick={inspect} disabled={running || !url.trim()}>
+              {running && mode === "inspect" ? <><span className="spinner" /> Checking</> : <>Check if it’s safe <Arrow /></>}
+            </button>
           </div>
-          {(formError || error) && <div className="notice error" style={{ marginTop: 12 }}>{formError || error}</div>}
+          <div className="row" style={{ marginTop: 14, maxWidth: 980 }}>
+            <span className="muted" style={{ fontSize: "var(--fs-sm)" }}>Try a DVMCP server (start the lab first):</span>
+            {EXAMPLES.map(([l, u]) => (
+              <button key={u} type="button" className="pick-chip" onClick={() => setUrl(u)} disabled={running}>{l}</button>
+            ))}
+            <label className="switch" style={{ marginLeft: "auto" }} title={health?.llm?.available ? "" : "No model configured: regex rules will be used"}>
+              <input type="checkbox" checked={useLlm} onChange={(e) => setUseLlm(e.target.checked)} disabled={running} />
+              Use AI inspectors
+            </label>
+            {events.length > 0 && !running && <button type="button" className="btn quiet" onClick={clear}>Clear</button>}
+          </div>
+          {(formError || error) && <div className="notice error" style={{ marginTop: 14, maxWidth: 980 }}>{formError || error}</div>}
+          <Steps step={step} />
         </div>
+      </section>
 
-        {events.length > 0 && (
-          <section aria-label="Pipeline" className="stack">
-            <VerdictBanner done={done} />
-            <PipelineView events={events} onApprove={approve} notRun={mode === "inspect" ? NOT_RUN_WHEN_INSPECTING : []} />
-          </section>
-        )}
+      <div className="wrap" style={{ paddingBottom: 96 }}>
+        <div className="stack-lg">
+          {events.length === 0 && (
+            <div className="help-grid" style={{ marginTop: 6 }}>
+              {[
+                ["What it checks", "Every tool’s name, description and parameters, for hidden orders aimed at the AI. If you then call a tool, also its reply and its behaviour over time."],
+                ["What it doesn’t do", "It is not a full security audit. A clean scan means no hidden instructions were found in the text; it can’t see bugs inside the server’s own code."],
+                ["Safe by default", "Only http(s) addresses are accepted. Credentials in URLs and cloud-metadata addresses are refused. No tool is called unless you choose to."],
+              ].map(([t, p]) => (
+                <div key={t} className="fcard"><h3 style={{ fontSize: "1.1rem" }}>{t}</h3><p style={{ fontSize: "0.95rem" }}>{p}</p></div>
+              ))}
+            </div>
+          )}
 
-        {tools && (
-          <div className="panel">
-            <div className="panel-title">2 · Call one tool through the Guardian</div>
-            <table className="tool-table">
-              <thead><tr><th>Tool</th><th>Static verdict</th><th>Scope</th><th>Engine</th></tr></thead>
-              <tbody>
-                {tools.map((t) => (
-                  <tr key={t.name} className="pick" aria-selected={pickedTool === t.name} onClick={() => pick(t)}
-                    tabIndex={0} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && pick(t)}>
-                    <td><code>{t.name}</code></td>
-                    <td><span className={`vpill ${t.verdict}`}>{t.verdict}</span> <span className="muted num">{Math.round(t.confidence * 100)}%</span></td>
-                    <td>{t.scope ? t.scope.replace("_", " ") : <span className="muted">—</span>}</td>
-                    <td className="muted">{t.engine}{t.model ? ` · ${t.model.split("/").pop().replace(/:free$/, "")}` : ""}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {pickedTool && (
-              <div style={{ marginTop: 16 }}>
-                <label className="field">
-                  <span>Arguments for <code>{pickedTool}</code> (JSON)</span>
-                  <textarea className="textarea" value={argsText} onChange={(e) => setArgsText(e.target.value)} rows={4} spellCheck={false} disabled={running} />
-                </label>
-                <div className="row" style={{ marginTop: 12 }}>
-                  <button type="button" className="btn primary" onClick={call} disabled={running}>
-                    {running && mode === "call" ? <><span className="spinner" /> Running</> : "Call through Guardian"}
-                  </button>
-                  <span className="muted" style={{ fontSize: "var(--fs-xs)" }}>The call is made on that server only if the policy allows it, or you approve it.</span>
+          {events.length > 0 && (
+            <RunView events={events} running={running} onApprove={approve} serverName={hostOf(url)}
+              notRun={mode === "inspect" ? NOT_RUN_WHEN_INSPECTING : []} showCompare={mode === "call"} />
+          )}
+
+          {tools && mode === "inspect" && (
+            <>
+              <div className={`final-verdict ${badCount ? "bad" : "ok"}`} role="status">
+                <span className="vi">{badCount ? <Alert width={30} height={30} /> : <Check width={30} height={30} />}</span>
+                <div>
+                  <h2>{badCount ? `${badCount} of ${tools.length} tools carry hidden instructions` : `No hidden instructions found in ${tools.length === 1 ? "the tool" : `all ${tools.length} tools`}`}</h2>
+                  <p>{badCount
+                    ? "Don’t connect an unprotected AI agent to this server. Guardian would stop the flagged tools before the agent saw them."
+                    : "A clean scan isn’t a guarantee: it covers what the tools say about themselves, not what the server does with your data."}</p>
                 </div>
               </div>
-            )}
-          </div>
-        )}
 
-        <div className="unsupported">
-          <strong>Not yet supported on this page</strong>
-          <ul>
-            <li>stdio servers (the endpoint must be reachable over http/https: SSE <code>…/sse</code> or streamable HTTP)</li>
-            <li>servers that need authentication headers or OAuth</li>
-            <li>keeping a session open across several calls, and saving or sharing a report</li>
-          </ul>
+              <div>
+                <h3 style={{ fontSize: "1.4rem", marginBottom: 14 }}>Tool by tool</h3>
+                <div className="tool-cards">
+                  {tools.map((t) => (
+                    <button key={t.name} type="button" className={`tcard${t.verdict !== "clean" ? " bad" : ""}`} aria-pressed={pickedTool === t.name} onClick={() => pick(t)}>
+                      <div className="top">
+                        <code style={{ fontSize: "0.9rem" }}>{t.name}</code>
+                        <span><span className={`vpill ${t.verdict}`}>{t.verdict}</span> <span className="muted num">{Math.round(t.confidence * 100)}%</span></span>
+                      </div>
+                      <div className="why">{clip(t.reasoning, 230)}</div>
+                      {t.flagged_phrases?.length > 0 && <div className="chips" style={{ marginTop: 8 }}>{t.flagged_phrases.slice(0, 3).map((p, i) => <code key={i} className="chip">{clip(p, 60)}</code>)}</div>}
+                      <div className="go">{t.scope ? `Can reach: ${t.scope.replace("_", " ")} · ` : ""}{pickedTool === t.name ? "Selected" : "Select to run it through Guardian →"}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {tools && pickedTool && (
+            <div className="panel">
+              <div className="panel-title">Run <code>{pickedTool}</code> through the full pipeline</div>
+              <label className="field">
+                <span>Arguments (JSON)</span>
+                <textarea className="textarea" value={argsText} onChange={(e) => setArgsText(e.target.value)} rows={4} spellCheck={false} disabled={running} />
+              </label>
+              <div className="row" style={{ marginTop: 12 }}>
+                <button type="button" className="btn primary" onClick={call} disabled={running}>
+                  {running && mode === "call" ? <><span className="spinner" /> Running</> : <><Play /> Call through Guardian</>}
+                </button>
+                <span className="muted" style={{ fontSize: "var(--fs-xs)" }}>The call reaches the server only if the policy allows it or you approve it.</span>
+              </div>
+            </div>
+          )}
+
+          <div className="unsupported">
+            <strong><Info width={14} height={14} style={{ verticalAlign: -2 }} /> Not supported yet</strong>
+            <ul>
+              <li>stdio servers (the endpoint must be reachable over http/https: SSE <code>…/sse</code> or streamable HTTP)</li>
+              <li>servers that need authentication headers or OAuth</li>
+              <li>keeping a session open across several calls, and saving or sharing a report</li>
+            </ul>
+          </div>
         </div>
       </div>
     </main>

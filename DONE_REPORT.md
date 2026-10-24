@@ -430,11 +430,14 @@ On the response benchmark the regex catches **10 of 29** injections and falsely 
 ## 8. What is pending
 
 **Needs capacity, not code:**
-1. **The full 1,762-case LLM evaluation.** The hosted key is free-tier (documented 50 requests/day, resets 05:30 IST; $10 credit
-   → 1,000/day) and the local CPU-only laptop would need ~35 hours. *Plan:* run `backend/scripts/run_full_local_eval.sh` on a
-   GPU laptop (~1–1.5 h, resumable), copy back `cases_ollama_full.jsonl`, then `python -m src.evaluation.run_eval --report-only`.
+1. ~~The full 1,762-case LLM evaluation.~~ **Done (2026-10-22):** qwen3:4b through the real CrewAI pipeline on an NVIDIA H200 (MIG slice),
+   BMU Kubernetes cluster, Ollama, 1 worker, 9 h 29 min, 1,762 / 1,762 answered, 0 unanswered. Combined config: precision 98.6%,
+   recall 74.4% (regex baseline 96.9% / 39.1%); MCPTox 75.8% (994 / 1,312, 95% CI 73–78) vs 39.7%; hard-negative false positives 0 / 12
+   vs 5 / 12; real clean tools 3.9% (14 / 362) vs 3.3%; DVMCP 16.1% (5 / 31, same as the regex — see the report's held-out caveat).
+   Per-case file: `backend/src/evaluation/reports/cases_ollama_full.jsonl`; tables in `docs/evaluation_report.md`; the web app reads
+   `frontend/src/data/results.json` (written by `--report-only`). The *hosted* run (dots-3) is still only a sample (42 cases).
 2. Prompt v1 vs v2 on more than 28 cases (only large effects are visible at n=28).
-3. Rewording the report's "evaluated on samples" limitation once the full results exist.
+3. ~~Rewording the "evaluated on samples" limitation~~ — done for the local run; the hosted run and the v1/v2 comparison remain samples.
 
 **Code/design work not done:**
 4. A **v3 prompt** built from the models' own errors (DVMCP / benign / fixtures only — never MCPTox), then a fresh held-out evaluation.

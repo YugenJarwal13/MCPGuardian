@@ -1,10 +1,20 @@
 import { useEffect, useState } from "react";
 import { fetchServers, fetchTools, resetServer } from "../api.js";
-import PipelineView from "../components/PipelineView.jsx";
-import ServerPicker from "../components/ServerPicker.jsx";
-import VerdictBanner from "../components/VerdictBanner.jsx";
-import { Play } from "../components/Icons.jsx";
+import { Info, Play } from "../components/Icons.jsx";
+import RunView from "../components/RunView.jsx";
 import { usePipelineRun } from "../hooks/usePipelineRun.js";
+
+const label = (s) => s.name.replace(/^DVMCP\s*[-–:]?\s*/i, "").replace(/^Challenge\s*/i, "Ch. ");
+
+function Chip({ s, selected, onSelect, disabled }) {
+  const offline = s.port && !s.live;
+  return (
+    <button type="button" className={`pick-chip${offline ? " off" : ""}`} aria-pressed={selected} disabled={disabled}
+      onClick={() => onSelect(s)} title={s.attack_category ? s.attack_category.replaceAll("_", " ") : "in-process fixture"}>
+      {s.port ? <span className={`d${s.live ? "" : " off"}`} /> : null}{label(s)}
+    </button>
+  );
+}
 
 export default function DemoPage({ health }) {
   const [servers, setServers] = useState(null);
@@ -17,10 +27,6 @@ export default function DemoPage({ health }) {
   const [formError, setFormError] = useState(null);
   const { events, running, error, start, approve, reset } = usePipelineRun();
 
-  useEffect(() => {
-    fetchServers().then(setServers).catch((e) => setFormError(`Cannot reach the API: ${e.message}`));
-  }, []);
-
   const selectServer = (s) => {
     reset();
     setServer(s);
@@ -30,7 +36,7 @@ export default function DemoPage({ health }) {
     setToolName(s.default_tool || "");
     setArgsText(JSON.stringify(s.default_args || {}, null, 2));
     if (s.port && !s.live) {
-      setToolsError(`Not running on port ${s.port}. Start it with: python scripts/run_dvmcp_native.py`);
+      setToolsError(`This DVMCP server is not running on port ${s.port}. Start the lab with: python scripts/run_dvmcp_native.py`);
       return;
     }
     fetchTools(s.id)
@@ -44,6 +50,18 @@ export default function DemoPage({ health }) {
       })
       .catch((e) => setToolsError(e.message));
   };
+
+  useEffect(() => {
+    fetchServers()
+      .then((data) => {
+        setServers(data);
+        const first = [...data.poisoned, ...data.clean].find((s) => s.id === "dvmcp-ch2" && s.live)
+          || data.poisoned.find((s) => s.live) || data.clean[0];
+        if (first) selectServer(first);
+      })
+      .catch((e) => setFormError(`Cannot reach the API: ${e.message}. Start it with: bash backend/scripts/run_api.sh`));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const selectTool = (name) => {
     setToolName(name);
@@ -63,62 +81,79 @@ export default function DemoPage({ health }) {
     start({ server_id: server.id, tool_name: toolName || null, arguments: args, use_llm: useLlm });
   };
 
-  const done = [...events].reverse().find((e) => e.stage === "done");
   const llmReady = health?.llm?.available;
 
   return (
-    <main className="page">
-      <div className="page-head">
-        <h1>Watch a tool call get screened</h1>
-        <p>Pick an MCP server, run one tool call, and see every defence layer decide — live, stage by stage.</p>
-      </div>
-      <div className="workspace">
-        <aside className="sidebar">
-          <div className="panel">
-            <div className="panel-title">1 · Choose a server</div>
-            <ServerPicker servers={servers} selectedId={server?.id} onSelect={selectServer} disabled={running} />
+    <main className="site">
+      <section className="page-hero">
+        <div className="wrap">
+          <div className="eyebrow">Live demo</div>
+          <h1>Watch Guardian protect an agent, one step at a time.</h1>
+          <div className="about-note">
+            <span className="ic"><Info /></span>
+            <p>
+              <b>About this demo.</b> The servers below come from <b>DVMCP</b> (Damn Vulnerable MCP Server), an open-source
+              training lab of ten deliberately vulnerable MCP servers, alongside a few offline stand-ins and clean reference servers. We use them purely as a
+              controlled dataset to demonstrate the pipeline; nothing here touches a real service. Every step you see is
+              produced by the real backend: the CrewAI inspectors, the Google ADK behaviour layer and the A2A hand-off.
+            </p>
           </div>
-          {server && (
-            <div className="panel">
-              <div className="panel-title">2 · Run it</div>
-              <label className="field">
-                <span>Tool</span>
-                {tools.length ? (
-                  <select className="select" value={toolName} onChange={(e) => selectTool(e.target.value)} disabled={running}>
-                    {tools.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
-                  </select>
-                ) : (
-                  <input className="input" value={toolName} readOnly />
-                )}
-              </label>
-              <label className="field">
-                <span>Arguments (JSON)</span>
-                <textarea className="textarea" value={argsText} onChange={(e) => setArgsText(e.target.value)}
-                  rows={Math.min(8, argsText.split("\n").length + 1)} spellCheck={false} disabled={running} />
-              </label>
-              <div className="row" style={{ marginTop: 14 }}>
-                <label className="switch" title={llmReady ? "" : "No model is configured: the API falls back to the heuristic detectors"}>
-                  <input type="checkbox" checked={useLlm} onChange={(e) => setUseLlm(e.target.checked)} disabled={running} />
-                  Use LLM agents
-                </label>
-              </div>
-              <div className="row" style={{ marginTop: 14 }}>
-                <button type="button" className="btn primary" onClick={run} disabled={running || !!toolsError}>
-                  {running ? <><span className="spinner" /> Running</> : <><Play /> Run pipeline</>}
-                </button>
-                <button type="button" className="btn quiet" disabled={running} title="Forget this server's behavioural history"
-                  onClick={() => resetServer(server.id).then(reset)}>Reset history</button>
-              </div>
+        </div>
+      </section>
+
+      <div className="wrap" style={{ paddingBottom: 96 }}>
+        <div className="stack-lg">
+          <div className="panel ctrl">
+            <div>
+              <div className="panel-title">1 · Pick a server</div>
+              {!servers && !formError && <p className="muted">Loading servers…</p>}
+              {servers && (
+                <>
+                  <div className="group-h">Poisoned (should be caught)</div>
+                  <div className="chips-pick">{servers.poisoned.map((s) => <Chip key={s.id} s={s} selected={server?.id === s.id} onSelect={selectServer} disabled={running} />)}</div>
+                  <div className="group-h">Clean (should sail through)</div>
+                  <div className="chips-pick">{servers.clean.map((s) => <Chip key={s.id} s={s} selected={server?.id === s.id} onSelect={selectServer} disabled={running} />)}</div>
+                </>
+              )}
+            </div>
+            <div>
+              <div className="panel-title">2 · Run it{server ? <span className="muted"> · {server.name}</span> : null}</div>
+              {server ? (
+                <>
+                  <label className="field">
+                    <span>Tool</span>
+                    {tools.length ? (
+                      <select className="select" value={toolName} onChange={(e) => selectTool(e.target.value)} disabled={running}>
+                        {tools.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+                      </select>
+                    ) : <input className="input" value={toolName} readOnly />}
+                  </label>
+                  <label className="field">
+                    <span>Arguments (JSON)</span>
+                    <textarea className="textarea" value={argsText} onChange={(e) => setArgsText(e.target.value)}
+                      rows={Math.min(6, argsText.split("\n").length + 1)} spellCheck={false} disabled={running} />
+                  </label>
+                  <div className="row" style={{ marginTop: 14 }}>
+                    <button type="button" className="btn primary" onClick={run} disabled={running || !!toolsError}>
+                      {running ? <><span className="spinner" /> Running</> : <><Play /> Run the pipeline</>}
+                    </button>
+                    <label className="switch" title={llmReady ? "" : "No model is configured: the API falls back to the regex rules"}>
+                      <input type="checkbox" checked={useLlm} onChange={(e) => setUseLlm(e.target.checked)} disabled={running} />
+                      Use AI inspectors
+                    </label>
+                    <button type="button" className="btn quiet" disabled={running} title="Forget this server's behavioural history"
+                      onClick={() => resetServer(server.id).then(reset)}>Reset history</button>
+                  </div>
+                </>
+              ) : <p className="muted">Choose a server on the left.</p>}
               {(formError || error) && <div className="notice error" style={{ marginTop: 12 }}>{formError || error}</div>}
               {toolsError && <div className="notice warn" style={{ marginTop: 12 }}>{toolsError}</div>}
+              {useLlm && health && !llmReady && <div className="notice warn" style={{ marginTop: 12 }}>No language model is reachable, so the inspectors will run on regex rules. Each step labels which engine answered.</div>}
             </div>
-          )}
-        </aside>
-        <section aria-label="Pipeline">
-          {!server && <div className="notice">Select a server on the left to begin. Clean servers should sail through; poisoned ones should be stopped at a specific stage.</div>}
-          {server && <VerdictBanner done={done} />}
-          {server && <PipelineView events={events} onApprove={approve} />}
-        </section>
+          </div>
+
+          <RunView events={events} running={running} onApprove={approve} serverName={server?.name?.replace(/^DVMCP\s*[-–:]?\s*/i, "DVMCP ")} />
+        </div>
       </div>
     </main>
   );
