@@ -1,13 +1,13 @@
-"""GuardianInterceptor — the orchestration point every MCP call routes through.
+"""GuardianInterceptor - the orchestration point every MCP call routes through.
 
 Wiring, by phase:
-    Phase 3  -> screen_tool_metadata  runs the static-analysis crew
-    Phase 4  -> screen_tool_response  runs the runtime-inspection crew
-    Phase 5  -> screen_tool_response  also updates the behavioural fingerprint
-    Phase 6  -> pre_call_check        combines verdicts + enforces allow/block/escalate
+    > screen_tool_metadata  runs the static-analysis crew
+    > screen_tool_response  runs the runtime-inspection crew
+    > screen_tool_response  also updates the behavioural fingerprint
+    > pre_call_check        combines verdicts + enforces allow/block/escalate
 
 Default construction (``GuardianInterceptor()``) leaves every layer off, so it is
-a faithful pass-through (the Phase 2 plumbing contract). Use
+a faithful pass-through (the plumbing contract). Use
 ``build_default_interceptor()`` for a fully-wired instance.
 """
 from __future__ import annotations
@@ -79,7 +79,7 @@ def _model_fields(meta: dict) -> dict:
 
 
 def _refusal(tool_name: str, reason: str) -> dict:
-    """An MCP-shaped refusal result — never a raw Python exception surfaced to the
+    """An MCP-shaped refusal result - never a raw Python exception surfaced to the
     reasoning agent."""
     return {
         "isError": True,
@@ -100,7 +100,7 @@ class GuardianInterceptor:
         human_approval_callback: Optional[Callable[[str], Awaitable[bool]]] = None,
         a2a_client: Optional[Any] = None,
     ):
-        # No ablation given => legacy no-op configuration (Phase 2 contract).
+        # No ablation given => legacy no-op configuration.
         self._ablation = ablation or AblationConfig(
             enable_static=False, enable_runtime=False, enable_behavioral=False
         )
@@ -124,7 +124,7 @@ class GuardianInterceptor:
         # Which model answered, per tool and stage: {"static": {"provider", "model", ...}}.
         self.models: dict[str, dict[str, dict]] = {}
 
-    # -- Phase 3: metadata screening ------------------------------------------
+    # -- metadata screening ------------------------------------------
     async def screen_tool_metadata(self, tools: Any, on_tool: Optional[Callable] = None) -> Any:
         """Static-screen every listed tool. ``on_tool(i, n, name, phase)`` (async, optional)
         is awaited with phase "start"/"done" so a streaming caller can report progress."""
@@ -156,7 +156,7 @@ class GuardianInterceptor:
                 await on_tool(i, len(all_tools), name, "done")
         return tools
 
-    # -- Phase 6: pre-call enforcement gate -----------------------------------
+    # -- pre-call enforcement gate -----------------------------------
     def verdicts_for(self, name: str) -> dict:
         """Everything ``combine_verdicts`` needs for one tool (minus allowlist)."""
         return {
@@ -185,7 +185,7 @@ class GuardianInterceptor:
                       "decision": decision.value, "blocked": False})
         return None
 
-    # -- Phase 7 / 11.3: CrewAI verdict -> A2A -> ADK case manager -------------
+    # -- CrewAI verdict -> A2A -> ADK case manager -------------
     async def report_case(self, name: str, case_id: Optional[str] = None) -> Optional[Any]:
         """Send this tool's current combined verdict to the case manager over the
         configured A2A transport. Returns the manager's case (or None if no
@@ -209,7 +209,7 @@ class GuardianInterceptor:
         )
         return await send_verdict_to_case_manager(message, self._a2a)
 
-    # -- Phase 4/5: response screening ----------------------------------------
+    # -- response screening ----------------------------------------
     # Split into public sub-steps so a caller that streams progress (src/api)
     # can report each stage as it happens without duplicating any logic.
     async def inspect_response_runtime(self, name: str, text: str):

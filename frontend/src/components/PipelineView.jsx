@@ -3,7 +3,7 @@ import StageCard from "./StageCard.jsx";
 // The fixed pipeline, rendered upfront so the whole path is visible before a run starts.
 export const STAGES = [
   ["connect", "Connect", "Open the MCP session"],
-  ["list_tools", "List tools", "tools/list — the metadata the agent will trust"],
+  ["list_tools", "List tools", "tools/list: the metadata the agent will trust"],
   ["static_check", "Static check", "CrewAI inspects the tool descriptions before any call"],
   ["tool_call", "Policy gate & tool call", "Enforce the policy, then run the call on the real server"],
   ["runtime_check", "Runtime check", "CrewAI inspects the live response for injected instructions"],

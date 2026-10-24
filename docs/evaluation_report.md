@@ -151,7 +151,7 @@ MCPTox is the cleanest generalisation test (never used in any prompt). This run 
 
 ## Deployed policy and the scope rule
 
-The policy additionally escalates any tool whose *parameter schema* grants a sensitive scope (credential, code execution, network egress, file write). Before Phase 12 this was a keyword match over the whole description. Same data, both rules (deterministic verdicts, combined config):
+The policy additionally escalates any tool whose *parameter schema* grants a sensitive scope (credential, code execution, network egress, file write). Before this was a keyword match over the whole description. Same data, both rules (deterministic verdicts, combined config):
 
 | Rule | Benign real tools escalated | Benign hand-written escalated | MCPTox tools with a scope | MCPTox policy recall |
 |---|---|---|---|---|
@@ -159,7 +159,7 @@ The policy additionally escalates any tool whose *parameter schema* grants a sen
 | schema-based (new) | 11.9% (43/362; CI 9–16) | 0.0% (0/7; CI 0–35) | 3/1312 | 39.9% (523/1312; CI 37–43) |
 | none (detectors only) | 3.3% (12/362; CI 2–6) | 0.0% (0/7; CI 0–35) | 0/1312 | 39.7% (521/1312; CI 37–42) |
 
-Benign tools escalated by the schema rule genuinely take a path+content, URL, command or secret parameter (e.g. `write_file`), so the policy is *designed* to ask a human about them; that is a cost, not a detector error. The old rule's extra "recall" on MCPTox came from keywords in the poisoned descriptions, not from detection.
+Benign tools escalated by the schema rule really take a path+content, URL, command or secret parameter (e.g. `write_file`), so the policy is *designed* to ask a human about them; that is a cost, not a detector error. The old rule's extra "recall" on MCPTox came from keywords in the poisoned descriptions, not from detection.
 
 Policy view on the answered cases — LLM · OpenRouter dots-3-note-preview:
 
@@ -358,7 +358,7 @@ Per group, combined config:
 | v2 | 100.0% (4/4; CI 51–100) | 50.0% (2/4; CI 15–85) | 100.0% (4/4; CI 51–100) | 0.0% (0/4; CI 0–49) | 0.0% (0/4; CI 0–49) | 25.0% (1/4; CI 5–70) | 0.0% (0/4; CI 0–49) |
 | Heuristic | 50.0% (2/4; CI 15–85) | 25.0% (1/4; CI 5–70) | 75.0% (3/4; CI 30–95) | 25.0% (1/4; CI 5–70) | 0.0% (0/4; CI 0–49) | 0.0% (0/4; CI 0–49) | 0.0% (0/4; CI 0–49) |
 
-## Honest limitations
+## Limitations
 
 - **The LLM was evaluated on small samples, not all 1,762 cases.** The OpenRouter account is on the free tier, which allows **50 requests per day** for `:free` models (HTTP 429 `free-models-per-day`, resetting 00:00 UTC; $10 of credits raises it to 1,000/day). The run therefore stopped after a few dozen cases; every answer is cached, so re-running the same command resumes it. The local model (CPU-only laptop, 60–100 s per call) was run on a balanced prefix for the same reason.
 - **Samples are small, so intervals are wide.** A group of 5–10 cases cannot support a precise rate; read the Wilson intervals, and treat differences smaller than them as unproven.

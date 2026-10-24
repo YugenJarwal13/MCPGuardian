@@ -13,7 +13,7 @@ const DWELL_FAST = 160;
  * "Check a server" render the exact same event stream.
  *
  * `events` are the events that have been *revealed* to the UI (a paced view of the real stream);
- * every event is real backend output — pacing only controls when it becomes visible. Human
+ * every event is real backend output; pacing only controls when it becomes visible. Human
  * decisions (status "escalate") and terminal events are never delayed.
  */
 export function usePipelineRun() {

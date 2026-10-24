@@ -1,4 +1,4 @@
-"""Phase 2 — plumbing proof.
+"""Plumbing proof.
 
 Two levels:
 1. A mock-session unit test that ALWAYS runs: proves the no-op interceptor is a
@@ -71,4 +71,4 @@ async def test_dvmcp_port_9001_noop_roundtrip():
             assert listed.tools  # returns normally
             first = listed.tools[0]
             result = await client.call_tool(first.name, {})
-            assert result is not None  # poisoned tool "works" — nothing inspects yet
+            assert result is not None  # poisoned tool "works" - nothing inspects yet

@@ -1,4 +1,4 @@
-"""Phase 1.7 — dataset manifest.
+"""Dataset manifest.
 
 Runs every loader once and dumps a composition summary to ``data_manifest.json``
 so the whole team can see counts per source and per attack category at a glance.

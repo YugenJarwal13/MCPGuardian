@@ -1,4 +1,4 @@
-"""Phase 10.1 - end-to-end demo.
+"""End-to-end demo.
 
 A minimal 'research assistant' talks to MCP tools exclusively through
 GuardedMCPClient. We point it at four in-process servers in turn and watch the
@@ -9,9 +9,8 @@ detectors); set credentials + use_llm=True to drive the LLM-backed agents.
     python -m src.demo_agent.run_demo --live          # real DVMCP servers (ports 9001-9010)
     python -m src.demo_agent.run_demo --live --interactive   # you approve/deny escalations
 
-``--live`` needs the lab running (``python scripts/run_dvmcp_native.py``). The
-live UI (``scripts/run_api.sh`` + ``scripts/run_frontend.sh``) is the primary
-viva demo; this terminal version is the fallback (see docs/viva_demo_script.md).
+``--live`` needs the lab running (``python scripts/run_dvmcp_native.py``). The web
+app is the main demo; this terminal version needs no browser.
 """
 from __future__ import annotations
 

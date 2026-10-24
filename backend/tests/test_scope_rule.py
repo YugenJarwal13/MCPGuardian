@@ -1,4 +1,4 @@
-"""Phase 12.7 — requested_scope() keys off the PARAMETER SCHEMA, not description prose."""
+"""Requested_scope() keys off the PARAMETER SCHEMA, not description prose."""
 from __future__ import annotations
 
 import pytest

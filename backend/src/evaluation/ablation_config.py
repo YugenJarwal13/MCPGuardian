@@ -1,6 +1,6 @@
-"""Phase 4.5 — ablation scaffolding.
+"""Ablation scaffolding.
 
-A single toggle set so Phase 8 can produce the static-only / runtime-only /
+A single toggle set so the evaluator can produce the static-only / runtime-only /
 combined comparison table without duplicating pipeline code. Both inspection
 agents and the behavioral layer respect these flags (skip execution when off).
 """
@@ -28,7 +28,7 @@ class AblationConfig:
         return "+".join(on) if on else "none"
 
 
-# The three canonical configurations Phase 8 tabulates.
+# The three canonical configurations the evaluator tabulates.
 CONFIGS: dict[str, AblationConfig] = {
     "static_only": AblationConfig(enable_static=True, enable_runtime=False, enable_behavioral=False),
     "runtime_only": AblationConfig(enable_static=False, enable_runtime=True, enable_behavioral=False),

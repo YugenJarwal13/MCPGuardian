@@ -1,4 +1,4 @@
-"""Phase 7.4 — prove the CrewAI -> A2A -> ADK round trip."""
+"""Prove the CrewAI -> A2A -> ADK round trip."""
 from __future__ import annotations
 
 from src.a2a_bridge.bridge import (

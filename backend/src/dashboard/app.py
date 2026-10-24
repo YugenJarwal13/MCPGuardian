@@ -1,8 +1,8 @@
-"""Phase 9 — Streamlit audit-trail dashboard.
+"""Streamlit audit-trail dashboard.
 
 Makes the Monitoring/Observability story concrete and clickable: filter down to
-``malicious``, show the class was actually caught, click into one row and read the
-agent's own ``reasoning`` out loud. Also renders the Phase 5 fingerprint-drift
+``malicious``, show the class was caught, click into one row and read the
+agent's own ``reasoning`` out loud. Also renders the fingerprint-drift
 chart inline (not just as a standalone PNG).
 
 Run:  streamlit run src/dashboard/app.py
@@ -99,7 +99,7 @@ def main() -> None:
                                                  f"{filtered.loc[i, 'verdict'] or filtered.loc[i, 'decision']}")
         st.json(json.loads(filtered.loc[idx].to_json()))
 
-    # Fingerprint-drift chart, rendered inline (Phase 5 reuse).
+    # Fingerprint-drift chart, rendered inline.
     st.subheader("Fingerprint drift (rug-pull demo tool)")
     try:
         from src.evaluation.drift_chart import compute_drift_series

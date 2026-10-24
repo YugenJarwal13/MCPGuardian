@@ -1,4 +1,4 @@
-"""Phase 11.4 — every verdict records which engine actually produced it."""
+"""Every verdict records which engine actually produced it."""
 from __future__ import annotations
 
 from src.crewai_layer import crew

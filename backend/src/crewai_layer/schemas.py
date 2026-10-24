@@ -1,6 +1,6 @@
-"""Phase 3.1 — the shared verdict schema.
+"""The shared verdict schema.
 
-Every inspection agent (static, runtime) outputs this exact shape so the Phase 6
+Every inspection agent (static, runtime) outputs this exact shape so the
 enforcement layer has one uniform contract to reason over.
 """
 from __future__ import annotations

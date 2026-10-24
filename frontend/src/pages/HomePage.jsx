@@ -31,24 +31,32 @@ function Kpi({ value, suffix = "%", decimals = 1, label, sub, hl, d }) {
   );
 }
 
-/** Two bars (model vs regex) for one group; widths animate in once visible. */
-function GroupBars({ g, higherIsBetter }) {
+/** One dataset: the Guardian and the regex baseline as aligned bars with their numbers. */
+function GroupRow({ g }) {
   const [ref, seen] = useInView(0.3);
   const a = g.llm;
   const b = g.regex;
+  const series = [
+    { key: "l", who: "Guardian", d: a },
+    { key: "r", who: "Regex", d: b },
+  ];
   return (
-    <div ref={ref} className="brow">
-      <div className="bl"><span>{g.label.replace(" (metadata)", "").replace(" (custom)", "")}</span><small>{int(g.n)} cases</small></div>
-      <div className="track has-val" title={`${a.flagged} of ${g.n} (95% CI ${pct(a.lo, 0)}–${pct(a.hi, 0)})`}>
-        <i className="fill l" style={{ width: seen ? `${Math.max(a.rate * 100, a.rate ? 1.5 : 0)}%` : 0 }} />
-        {seen && a.n !== 0 && <i className="ci" style={{ left: `${a.lo * 100}%`, width: `${(a.hi - a.lo) * 100}%` }} />}
-        <span className="val">{pct(a.rate)} · {a.flagged}/{g.n}</span>
+    <div ref={ref} className="grp">
+      <div className="grp-head">
+        <b>{g.label.replace(" (metadata)", "").replace(" (custom)", "")}</b>
+        <span>{int(g.n)} cases</span>
       </div>
-      <div className="track has-val">
-        <i className="fill r" style={{ width: seen ? `${Math.max(b.rate * 100, b.rate ? 1.5 : 0)}%` : 0 }} />
-        <span className="val">{pct(b.rate)} · {b.flagged}/{g.n}</span>
-      </div>
-      <span className="sr-only">{higherIsBetter ? "higher is better" : "lower is better"}</span>
+      {series.map(({ key, who, d }) => (
+        <div key={key} className="srow">
+          <span className="who">{who}</span>
+          <div className="track">
+            <i className={`fill ${key}`} style={{ width: seen ? `${Math.max(d.rate * 100, d.rate ? 1.5 : 0)}%` : 0 }} />
+          </div>
+          <span className="pct num">{pct(d.rate)}</span>
+          <span className="cnt num">{int(d.flagged)} / {int(g.n)}</span>
+        </div>
+      ))}
+      <div className="ci-note">Guardian 95% confidence interval: {pct(a.lo, 0)} to {pct(a.hi, 0)}</div>
     </div>
   );
 }
@@ -72,8 +80,6 @@ export default function HomePage({ section }) {
   const mt = R.groups.mcptox;
   const bn = R.groups.benign_real;
   const dv = R.groups.dvmcp;
-  const hrs = Math.floor(R.run.duration_minutes / 60);
-  const mins = Math.round(R.run.duration_minutes % 60);
 
   useEffect(() => {
     if (!section) return;
@@ -90,9 +96,6 @@ export default function HomePage({ section }) {
       <section className="hero">
         <div className="wrap hero-grid">
           <div className="hero-text">
-            <a className="hero-pill" href={ROUTES.demo}>
-              <span className="ic"><Check /></span> Live demo ready <span className="dim">— watch every step</span> <Arrow width={14} height={14} />
-            </a>
             <h1 className="h-xl">Your AI agent trusts every tool it meets. <span className="accent">Guardian doesn’t.</span></h1>
             <p className="lead">
               MCP Guardian sits between an AI agent and the tool servers it connects to. It reads every tool description
@@ -192,21 +195,21 @@ export default function HomePage({ section }) {
           </div>
 
           <Reveal className="panelx">
-            <h3>Attacks: how many did it catch?</h3>
-            <p className="sub">Higher is better. The thin black whisker is the 95% confidence interval for the model.</p>
+            <h3>Attacks caught</h3>
+            <p className="sub">Share of attack cases flagged. Higher is better.</p>
             <div className="legend"><span><i className="l" />Guardian (CrewAI + {shortModel(R.run.model)})</span><span><i className="r" />Regex baseline</span></div>
-            <div className="bars">{attacks.map((g) => <GroupBars key={g.label} g={g} higherIsBetter />)}</div>
+            <div className="bars">{attacks.map((g) => <GroupRow key={g.label} g={g} />)}</div>
             {dv && (
-              <div className="note"><b>Honest note on DVMCP ({pct(dv.llm.rate, 0)}).</b> Many DVMCP challenges have harmless-looking descriptions; the flaw is in how the
+              <div className="note"><b>Note on DVMCP ({pct(dv.llm.rate, 0)}).</b> Many DVMCP challenges have harmless-looking descriptions; the flaw is in how the
                 tool is built (for example, it runs a shell command it was handed). No tool-description reader can see that. Two of the lab’s descriptions
                 are also quoted in our prompt, so DVMCP is not a clean test for the model. MCPTox is.</div>
             )}
           </Reveal>
 
           <Reveal className="panelx">
-            <h3>Clean tools: how many did it wrongly flag?</h3>
-            <p className="sub">Lower is better. “Hard negatives” are harmless texts that look suspicious on purpose (for example a changelog that says “ignore the warnings”).</p>
-            <div className="bars">{clean.map((g) => <GroupBars key={g.label} g={g} />)}</div>
+            <h3>False alarms on clean tools</h3>
+            <p className="sub">Share of harmless cases wrongly flagged. Lower is better. “Hard negatives” are harmless texts written to look suspicious, for example a changelog that says “ignore the warnings”.</p>
+            <div className="bars">{clean.map((g) => <GroupRow key={g.label} g={g} />)}</div>
           </Reveal>
 
           <div className="split">
@@ -239,7 +242,7 @@ export default function HomePage({ section }) {
             <div className="eyebrow">Baseline vs. language model</div>
             <h2 className="h-lg wide">What a hand-written regex can and can’t see.</h2>
             <p className="lead">
-              To know whether the AI inspectors earn their keep, we built the simplest honest alternative first and
+              To know whether the AI inspectors earn their keep, we built the simplest reasonable alternative first and
               measured it on exactly the same cases.
             </p>
           </Reveal>
@@ -290,7 +293,7 @@ export default function HomePage({ section }) {
               <div className="ic"><Database /></div>
               <div className="nm">MCPTox</div>
               <div className="by">AAAI 2026 benchmark · <a className="ext" href="https://github.com/zhiqiangwang4/MCPTox-Benchmark" target="_blank" rel="noreferrer">zhiqiangwang4/MCPTox-Benchmark</a></div>
-              <p>A benchmark of <b>tool-poisoning attacks on real-world MCP servers</b>: genuine tool listings with malicious instructions planted inside the metadata, labelled by attack type.</p>
+              <p>A benchmark of <b>tool-poisoning attacks on real-world MCP servers</b>: real tool listings with malicious instructions planted inside the metadata, labelled by attack type.</p>
               <ul><li>privacy leakage, information manipulation, service disruption, infrastructure damage, data tampering…</li><li>plus the original, unmodified tools as a clean set</li></ul>
               <div className="used"><b>We use:</b> {int(R.dataset.groups.mcptox.n)} attack cases (36 the authors flagged as bad data were dropped) and {int(R.dataset.groups.benign_real.n)} clean real tools. This is our main, held-out test.</div>
             </Reveal>
@@ -308,7 +311,7 @@ export default function HomePage({ section }) {
               <div className="by">written for this project</div>
               <p>MCPTox checks tool <i>descriptions</i>; it doesn’t test what a tool <i>returns</i>. So we wrote cases for that gap.</p>
               <ul><li>{R.dataset.groups.custom_atk.n} replies with a hidden command</li><li>{R.dataset.groups.custom_ben.n} ordinary replies</li><li>{R.dataset.groups.custom_hn.n} “hard negatives”: harmless text that sounds like an attack</li></ul>
-              <div className="used"><b>Honest caveat:</b> small and hand-written by the same team, so read it as a probe, not a field benchmark.</div>
+              <div className="used"><b>Caveat:</b> small and hand-written by the same team, so read it as a probe, not a field benchmark.</div>
             </Reveal>
           </div>
         </div>
@@ -327,15 +330,9 @@ export default function HomePage({ section }) {
             </p>
           </Reveal>
           <Reveal className="hw">
-            <div><b>{R.run.gpu.replace("NVIDIA ", "")}</b><span>GPU slice (NVIDIA)</span></div>
-            <div><b>{hrs} h {mins} min</b><span>wall-clock, {R.run.workers} worker</span></div>
+            <div><b>{R.run.gpu.replace("NVIDIA ", "")}</b><span>GPU slice</span></div>
             <div><b>{R.run.median_call_seconds.toFixed(1)} s</b><span>median model call</span></div>
             <div><b>{int(R.run.answered)} / {int(R.run.cases)}</b><span>cases answered by the model</span></div>
-          </Reveal>
-          <Reveal className="note info" style={{ marginTop: 26 }}>
-            <b>Reading these numbers fairly.</b> One model, one run; the prompt (v2) contains two DVMCP descriptions as examples, so MCPTox and the clean
-            tools are the clean tests. The regex was not tuned on any of this. Full methodology and every table are in{" "}
-            <a href={`${REPO}/blob/master/docs/evaluation_report.md`} target="_blank" rel="noreferrer">the evaluation report</a>.
           </Reveal>
         </div>
       </section>
@@ -352,7 +349,7 @@ export default function HomePage({ section }) {
             {[
               [Eye, "Traced end to end", "Each run is one OpenTelemetry trace: a span per stage and a span per model call with model, tokens, latency and cache hit. Traces are written to a local file and can be sent to Langfuse. The trace id is shown in the live console."],
               [Layers, "Callbacks everywhere", "CrewAI step and task callbacks and Google ADK agent, model and tool callbacks write intermediate outputs and errors into the audit trail, so a failure can be debugged after the fact."],
-              [Shield, "Guarded itself", "Tool arguments and server addresses go through an input guard. On the public site, internal addresses are refused, visitors are rate-limited, and the shared AI budget degrades to regex rules instead of failing."],
+              [Shield, "Guarded itself", "Tool arguments and server addresses go through an input guard. On the public site, internal addresses are refused, visitors are rate-limited, and a daily cap protects the shared AI budget."],
             ].map(([Ic, t, p], i) => (
               <Reveal key={t} d={i} className="fcard"><div className="ic"><Ic /></div><h3>{t}</h3><p>{p}</p></Reveal>
             ))}
@@ -373,7 +370,7 @@ export default function HomePage({ section }) {
           </Reveal>
           <footer className="foot">
             <span><Shield width={16} height={16} style={{ verticalAlign: -3 }} /> MCP Guardian · open source · benchmarks courtesy of MCPTox and DVMCP</span>
-            <span><a href={REPO} target="_blank" rel="noreferrer">GitHub</a> · <a href={`${REPO}/blob/master/DONE_REPORT.md`} target="_blank" rel="noreferrer">Project report</a></span>
+            <span><a href={REPO} target="_blank" rel="noreferrer">GitHub</a> · <a href={`${REPO}/blob/master/docs/evaluation_report.md`} target="_blank" rel="noreferrer">Evaluation report</a></span>
           </footer>
         </div>
       </section>

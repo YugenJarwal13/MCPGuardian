@@ -1,9 +1,9 @@
-"""Task 6 — hand-written TOOL-RESPONSE benchmark (runtime inspection).
+"""Hand-written TOOL-RESPONSE benchmark (runtime inspection).
 
 Why this exists: MCPTox and DVMCP list tool *metadata*, so before this file only 7
 cases in the whole dataset carried a tool response and ``runtime_only`` could not be
 measured at all. Each case here is a normal-looking tool with a clean description
-plus one response body — either carrying an injected instruction aimed at the
+plus one response body - either carrying an injected instruction aimed at the
 calling agent, or being ordinary data.
 
 Provenance: every response was written for this project, in its own words; nothing

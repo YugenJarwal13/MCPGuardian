@@ -1,11 +1,11 @@
-"""Phase 3.3 / 11.4 — the static-analysis task.
+"""The static-analysis task.
 
 Prompt versions (select with ``GUARDIAN_PROMPT_VERSION``, default ``v2``):
 
   v1  the original zero-shot checklist.
   v2  adds few-shot pairs built from the failure modes observed on the REAL data
       (see docs/prompt_iterations.md). Sources are deliberately restricted to
-      live DVMCP tools and hand-written benign cases — MCPTox is NEVER used as
+      live DVMCP tools and hand-written benign cases - MCPTox is NEVER used as
       few-shot material, so it remains a held-out test set.
 
 v2 has not yet been validated against a live LLM in this repo (no provider key

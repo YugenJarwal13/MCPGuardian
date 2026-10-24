@@ -1,11 +1,11 @@
-"""Phase 1.5 — benign control set.
+"""Benign control set.
 
 Neither DVMCP nor MCPTox ships a matched clean set, so we assemble one here. This
 is the ONLY way the evaluation can measure false positives. All cases are
 ``ground_truth_label="clean"`` with ``attack_category=None``.
 
-Includes a couple of deliberately *tricky* benign cases — clean data that merely
-contains instruction-adjacent words ("ignore v1, use v2") — because a defender
+Includes a couple of deliberately *tricky* benign cases - clean data that merely
+contains instruction-adjacent words ("ignore v1, use v2") - because a defender
 that flags those has an unacceptable false-positive rate.
 """
 from __future__ import annotations

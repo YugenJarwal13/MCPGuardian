@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Phase 1.1 — clone the MCPTox benchmark (attack-only dataset).
+# Clone the MCPTox benchmark (attack-only dataset).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

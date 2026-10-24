@@ -1,4 +1,4 @@
-"""Phase 5.1 — the tool fingerprint schema.
+"""The tool fingerprint schema.
 
 Uses Welford's online statistics so we never store the full call history: mean
 and M2 (sum of squared deltas) are enough to compute running mean/variance of

@@ -84,7 +84,7 @@
 /* ------------------------------------------------------------- verdict ----- */
 .verdict {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 18px; border-radius: var(--r-lg);
-  border: 1px solid var(--border); background: var(--surface); margin-bottom: 18px; animation: rise var(--t-slow) var(--ease);
+  border: 1px solid var(--border); background: var(--surface); animation: rise var(--t-slow) var(--ease);
 }
 .verdict .v-icon { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; flex: none; }
 .verdict .v-title { font-size: var(--fs-lg); font-weight: 650; letter-spacing: -0.01em; }
@@ -155,7 +155,7 @@
 .timer { font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
 .timer.live { color: var(--accent-text); }
 
-/* expand / collapse — animates real height via grid rows */
+/* expand / collapse: animates the real height via grid rows */
 .expand { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--t-med) var(--ease); }
 .expand[data-open="true"] { grid-template-rows: 1fr; }
 .expand > .expand-inner { overflow: hidden; min-height: 0; }
@@ -181,7 +181,7 @@ details.raw summary { cursor: pointer; color: var(--text-3); font-size: var(--fs
 details.raw pre { margin: 6px 0 0; white-space: pre-wrap; font-size: var(--fs-xs); }
 .tried { margin: 0; padding-left: 18px; font-size: var(--fs-xs); color: var(--text-2); }
 
-/* escalation: a calm decision moment, inline in the card */
+/* escalation: inline approval panel */
 .decision {
   margin-top: 12px; padding: 14px; border-radius: var(--r-md); border: 1px solid color-mix(in srgb, var(--flag) 45%, var(--border));
   background: var(--surface); display: flex; flex-direction: column; gap: 10px; animation: rise var(--t-med) var(--ease);

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Full evaluation (all ~1,762 cases) with a LOCAL Ollama model — meant for a machine with a GPU.
+# Full evaluation (all ~1,762 cases) with a LOCAL Ollama model - meant for a machine with a GPU.
 # No OpenRouter key and no .env are needed. Resumable: re-run the same command after any interruption.
 #
 #   cd backend

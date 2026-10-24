@@ -36,7 +36,7 @@ export function startRun(request, { onEvent, onClose, onError }) {
   const ws = new WebSocket(wsUrl("/ws/run"));
   ws.onopen = () => ws.send(JSON.stringify(request));
   ws.onmessage = (msg) => onEvent(JSON.parse(msg.data));
-  ws.onerror = () => onError?.(new Error("WebSocket error — is the API running on :8000?"));
+  ws.onerror = () => onError?.(new Error("WebSocket error: is the API running on port 8000?"));
   ws.onclose = () => onClose?.();
   return {
     approve: (approved) => ws.send(JSON.stringify({ type: "approval", approved })),

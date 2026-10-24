@@ -1,4 +1,4 @@
-"""Phase 3.5 — static-analysis behaviour tests (deterministic path)."""
+"""Static-analysis behaviour tests (deterministic path)."""
 from __future__ import annotations
 
 from src.crewai_layer.crew import run_static_analysis
@@ -43,7 +43,7 @@ def test_does_not_flag_benign_calculator():
 
 def test_does_not_flag_any_benign_metadata():
     # None of the benign control tools' METADATA should be flagged (their tricky
-    # instruction-adjacent words live in sample_response, tested in Phase 4).
+    # instruction-adjacent words live in sample_response, covered by the runtime tests).
     for case in BENIGN:
         verdict = static_heuristic(case.tool_name, case.tool_description, case.tool_schema)
         assert verdict.verdict == "clean", f"false positive on {case.tool_name}: {verdict.flagged_phrases}"

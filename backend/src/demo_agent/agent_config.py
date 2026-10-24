@@ -1,10 +1,9 @@
-"""Phase 10 — demo agent configuration.
+"""Demo agent configuration.
 
 Defines both the *live* targets (a clean reference MCP server + specific DVMCP
 challenge ports) and an *offline* in-process fake server so the end-to-end demo
-runs anywhere, with or without Docker/LLM credentials. The point of Phase 10 is
-showcasing the Guardian catching an attack mid-task, not an impressive downstream
-agent — so the fake server is deliberately tiny.
+runs anywhere, with or without Docker/LLM credentials. The goal is to show the Guardian catching an attack mid-task, not to build an
+impressive downstream agent, so the fake server is deliberately tiny.
 """
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Phase 6 — enforcement policy + hard-block tests."""
+"""Enforcement policy + hard-block tests."""
 from __future__ import annotations
 
 import pytest

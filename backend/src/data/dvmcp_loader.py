@@ -1,4 +1,4 @@
-"""Phase 1.3 — DVMCP loader.
+"""DVMCP loader.
 
 DVMCP (Damn Vulnerable MCP Server) ships 10 challenge servers on ports
 9001-9010, each demonstrating one documented attack class. That mapping IS our
@@ -13,7 +13,7 @@ cases are still labelled with the correct ground truth and attack category; the
 ``case_id`` suffix ``-offline`` makes the provenance explicit in the audit trail.
 
 Verify the exact challenge numbering/wording against the DVMCP README you cloned
-before relying on it for a report — repo content can shift between versions.
+before relying on it for a report - repo content can shift between versions.
 """
 from __future__ import annotations
 
@@ -30,8 +30,8 @@ class Challenge:
     port: int
     difficulty: str
     attack_category: str
-    # True when the attack is delivered through the tool RESPONSE (runtime path,
-    # Phase 4) rather than the tool DESCRIPTION (static path, Phase 3).
+    # True when the attack is delivered through the tool RESPONSE (runtime path)
+    # rather than the tool DESCRIPTION (static path).
     response_path: bool
 
 

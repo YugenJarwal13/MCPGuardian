@@ -2,3 +2,4 @@
 *.png binary
 *.jpg binary
 *.db binary
+*.cmd text eol=crlf

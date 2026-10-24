@@ -1,10 +1,10 @@
-"""Phase 5.5 — fingerprint-drift chart.
+"""Fingerprint-drift chart.
 
 Replays the rug-pull scenario (10 normal calls, then a poisoned call 11) and
 plots ``mean_length`` and ``z_score`` over the 11 calls. The "flat line, then a
 spike at call 11" is one of the clearest visuals for the final report/slides.
 Saves to ``src/evaluation/reports/fingerprint_drift.png`` and returns the series
-so Phase 9's dashboard can render the same data inline.
+so the dashboard can render the same data inline.
 """
 from __future__ import annotations
 

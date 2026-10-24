@@ -1,4 +1,4 @@
-"""Phase 5.1 — SQLite-backed persistent fingerprint store.
+"""SQLite-backed persistent fingerprint store.
 
 One row per ``tool_id`` holding its ToolFingerprint as serialized JSON.
 Persistent across process restarts so drift is measured across the whole project

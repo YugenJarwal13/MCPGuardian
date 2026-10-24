@@ -1,6 +1,6 @@
 # Project requirements: where each one is met
 
-An honest map from the course's minimum requirements to the code and the evidence. "Partial" means partly
+A map from the course's minimum requirements to the code and the evidence. "Partial" means partly
 met, with the gap stated.
 
 | # | Requirement | Status | Evidence |
@@ -15,7 +15,7 @@ met, with the gap stated.
 | 8 | Guardrails and data-validation callbacks | Met, with a stated limit | Content guardrails on tool descriptions and responses (the product itself); Pydantic validation of every verdict; ADK enforcement callback; **input guard** on user-supplied tool arguments and URLs (`backend/src/security/input_guard.py`); SSRF block, rate limits and a daily AI budget on the public site (`public_mode.py`); inspect-only mode for dangerous lab servers. There is no chat input in this app, so "user prompt screening" applies to tool arguments and URLs. The input guard is rule-based and unevaluated. Tests: `test_input_guard.py`, `test_api_guards.py`. |
 | 9 | Observability (tracing, auditability, provenance) | Met | `backend/src/observability.py`: OpenTelemetry trace per run, a span per stage and per model call, written to `logs/traces.jsonl`; exported to **Langfuse** when `LANGFUSE_*` keys are set (tested locally against the file exporter; a live Langfuse project has not been connected from this repository). Trace id is on every event and audit record and shown in the live console. |
 | 10 | End-to-end performance evaluation, cost and running-time estimates | Met | `docs/evaluation_report.md` (1,762 cases, confidence intervals, baseline comparison, latency); `docs/cost_and_runtime.md` (tokens, time, illustrative dollars; regenerate with `python -m src.evaluation.cost`). Token totals for the H200 run are estimates (the case files do not store tokens). |
-| 11 | Deploy on a cloud platform | **Not done yet** | A `Dockerfile`, entrypoint and CI workflow are in the repo and the same server settings were run locally end to end, but nothing is deployed. The image has not been built in this repository's environment (Docker is not installed there). Hugging Face Docker Spaces turned out to need a paid plan, so another free host is being chosen. |
+| 11 | Deploy on a cloud platform | Not done yet | A `Dockerfile`, entrypoint and CI workflow are in the repository, and the same server settings were run locally end to end, but nothing is deployed and the image has not been built in this environment (Docker is not installed there). |
 
 ## Known limits worth stating
 

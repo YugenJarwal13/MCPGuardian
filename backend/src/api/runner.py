@@ -1,4 +1,4 @@
-"""``WS /ws/run`` — drive one guarded tool call and stream every stage live.
+"""``WS /ws/run`` - drive one guarded tool call and stream every stage live.
 
 Client -> server (first message):
     {"server_id": "dvmcp-ch2", "tool_name": "get_company_data",
@@ -101,7 +101,7 @@ class _Run:
             self.server_id = req["server_id"]
             self.spec = get_spec(self.server_id)
         self.inspect_only = bool(req.get("inspect_only"))
-        self.budget_note: str | None = None      # set by ws_run when the day's AI-inspector budget is spent
+        self.notice: str | None = None           # shown on the connect step (e.g. a lab server is inspect-only)
         self.a2a = a2a_client
         self.em = EventEmitter(uuid.uuid4().hex[:12], self._send, self.server_id)
 
@@ -122,11 +122,13 @@ class _Run:
     async def run(self) -> None:
         em, spec = self.em, self.spec
         use_llm = bool(self.req.get("use_llm"))
-        llm_note = None
         if use_llm and not llm_available():
-            use_llm = False
-            llm_note = "LLM requested but no provider is configured — heuristic detectors used."
-        llm_note = llm_note or self.budget_note
+            await em.emit("connect", "error",
+                          "No language model is reachable, and this run needs one. Check the OpenRouter key and model "
+                          "settings of the backend.", {"hint": "see the LLM configuration section of the README"})
+            await em.emit("done", "error", "Run aborted: no language model available.")
+            return
+        llm_note = self.notice
 
         # The pre-call gate's escalation asks the human over this WebSocket.
         async def human(tool_name: str) -> bool:
@@ -304,7 +306,7 @@ class _Run:
                   and interceptor.current_decision(tool, include_scope=False)
                   == GuardianDecision.ALLOW):
                 # The only reason to escalate is the tool's sensitive scope, which the
-                # human already approved for this call — don't ask twice.
+                # human already approved for this call - don't ask twice.
                 await em.emit("enforcement", "passed",
                               "Allowed — covered by the human approval given before the call ✓",
                               {"decision": "allow", "approved_scope": interceptor._scope.get(tool)})
@@ -349,7 +351,7 @@ async def _reject(ws: WebSocket, message: str, category: str, client: str) -> No
 
 async def _admit(ws: WebSocket, req: dict, client: str) -> tuple[bool, str | None]:
     """Input guard + (in public mode) rate limits and SSRF protection.
-    Returns ``(admitted, budget_note)``; when not admitted the refusal has already been sent."""
+    Returns ``(admitted, notice)``; when not admitted the refusal has already been sent."""
     res = check_arguments(req.get("arguments"))
     if not res.ok:
         await _reject(ws, f"Input rejected by the input guard: {res.reason}.", res.category, client)
@@ -370,12 +372,12 @@ async def _admit(ws: WebSocket, req: dict, client: str) -> tuple[bool, str | Non
     if err:
         await _reject(ws, err, "rate_limit", client)
         return False, None
-    note = restrict_execution(req)
     if req.get("use_llm") and not limiter().take_llm_run():
-        req["use_llm"] = False
-        budget = "Today's budget of AI-inspector runs on this public site is used up, so the regex rules were used instead."
-        note = f"{note} {budget}" if note else budget
-    return True, note
+        limiter().release(client)
+        await _reject(ws, "Today's budget of AI-inspector runs on this public site is used up. "
+                          "It resets at 00:00 UTC; please try again then.", "budget", client)
+        return False, None
+    return True, restrict_execution(req)
 
 
 @router.websocket("/ws/run")
@@ -387,13 +389,13 @@ async def ws_run(ws: WebSocket) -> None:
         if not isinstance(req, dict):
             await _reject(ws, "Malformed request.", "shape", client)
             return
-        admitted, budget_note = await _admit(ws, req, client)
+        admitted, notice = await _admit(ws, req, client)
         if not admitted:
             return
         acquired = public_mode()
         try:
             run = _Run(ws, req, ws.app.state.a2a_client)
-            run.budget_note = budget_note
+            run.notice = notice
         except KeyError:
             await ws.send_json({"stage": "done", "status": "error",
                                 "message": f"Unknown server '{req.get('server_id')}'"})

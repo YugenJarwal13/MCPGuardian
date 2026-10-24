@@ -1,10 +1,9 @@
-"""Phase 2 — GuardedMCPClient.
+"""GuardedMCPClient.
 
 Wraps a standard MCP ``ClientSession`` so every ``list_tools`` / ``call_tool``
 passes through the Guardian pipeline before the caller sees it. The wrapped
 session is duck-typed (any object exposing async ``list_tools`` / ``call_tool``),
-so this module imports cleanly even when the ``mcp`` package is not installed —
-useful for unit-testing the wrapper against a mock session.
+so this module imports cleanly even when the ``mcp`` package is not installed - useful for unit-testing the wrapper against a mock session.
 """
 from __future__ import annotations
 
@@ -19,9 +18,9 @@ class _SessionLike(Protocol):
 class GuardedMCPClient:
     """Transparent, screening replacement for a raw MCP ``ClientSession``.
 
-    The agent under protection does not opt in — it simply holds a
+    The agent under protection does not opt in - it simply holds a
     ``GuardedMCPClient`` instead of a ``ClientSession`` and everything is
-    screened. In its default (Phase 2) configuration the interceptor is a
+    screened. In its default configuration the interceptor is a
     pass-through, so behaviour is identical to the raw session; later phases give
     the interceptor teeth without changing this wrapper's interface.
     """

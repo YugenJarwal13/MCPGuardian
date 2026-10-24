@@ -1,4 +1,4 @@
-"""Phase 4.2 / 11.4 — the runtime-inspection task, with explicit few-shot grounding.
+"""The runtime-inspection task, with explicit few-shot grounding.
 
 Prompt versions (``GUARDIAN_PROMPT_VERSION``, default ``v2``):
   v1  the original two-positive / two-negative few-shot prompt.
@@ -8,7 +8,7 @@ Prompt versions (``GUARDIAN_PROMPT_VERSION``, default ``v2``):
       "instruction words inside ordinary data" negatives. Sources: live DVMCP +
       hand-written; MCPTox is never used here (held-out test set).
 
-v2 is UNVALIDATED against a live LLM (no provider key available yet) — see
+v2 is UNVALIDATED against a live LLM (no provider key available yet) - see
 docs/prompt_iterations.md for the iteration log and how to measure it.
 """
 import os

@@ -1,8 +1,8 @@
-"""Phase 6 — guardrail enforcement.
+"""Guardrail enforcement.
 
 Pure, independently-testable policy: combine the (up to three) signals into one
 decision, then enforce it for real (raise, don't just log). The sensitive-scope
-check runs BEFORE and INDEPENDENTLY of the AI verdicts — defense in depth: even
+check runs BEFORE and INDEPENDENTLY of the AI verdicts - defense in depth: even
 if every inspection agent is fooled, a tool requesting a sensitive scope still
 cannot auto-execute.
 
@@ -54,7 +54,7 @@ def combine_verdicts(
     worst = _worst(static_verdict, runtime_verdict)
 
     # A malicious verdict always blocks. The scope rule below may only make a
-    # decision STRICTER — it must never downgrade a BLOCK to an ESCALATE that a
+    # decision STRICTER - it must never downgrade a BLOCK to an ESCALATE that a
     # human could then approve (that let known-malicious responses be released).
     if worst in allowlist.get("auto_block_on_verdict", []):
         return GuardianDecision.BLOCK
@@ -90,7 +90,7 @@ async def enforce(
 
 
 async def cli_human_approval(tool_name: str) -> bool:
-    """A blocking CLI prompt — a completely legitimate human-in-the-loop for a
+    """A blocking CLI prompt - a completely legitimate human-in-the-loop for a
     course demo."""
     response = input(f"[GUARDIAN] Tool '{tool_name}' flagged for review. Approve? (y/n): ")
     return response.strip().lower() == "y"
@@ -111,7 +111,7 @@ def make_guardian_before_tool_callback(
 
     ADK calls it with ``(tool, args, tool_context)`` right before dispatching a
     tool. We record the decision in the ADK session state (so it is part of the
-    session's durable history) and then ``enforce`` it — a BLOCK or a denied
+    session's durable history) and then ``enforce`` it - a BLOCK or a denied
     ESCALATE raises ``GuardianBlockedError`` and the tool body never runs.
     Returning ``None`` lets ADK proceed with the real call.
     """

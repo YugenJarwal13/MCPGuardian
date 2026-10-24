@@ -1,7 +1,7 @@
-"""Phase 8 / 11.5 / 12.5 — evaluation runner.
+"""Evaluation runner.
 
 Scores every selected ``ToolTestCase`` once and writes ONE record per case to
-``src/evaluation/reports/cases_<name>.jsonl`` — verdicts, engine, and (for LLM
+``src/evaluation/reports/cases_<name>.jsonl`` - verdicts, engine, and (for LLM
 verdicts) the provider/model/latency that produced them, plus the deterministic
 heuristic's verdicts for the same case. ``report.py`` derives every number from
 those files, so metrics can be recomputed (and sliced) without re-running a model.
@@ -15,7 +15,7 @@ those files, so metrics can be recomputed (and sliced) without re-running a mode
 
 LLM runs are RESUMABLE: every successful model answer is cached
 (``logs/llm_cache.jsonl``), so re-running continues where a quota stopped it.
-By default an LLM run is STRICT — it never silently falls back to the local model
+By default an LLM run is STRICT - it never silently falls back to the local model
 or to the heuristic; a case whose LLM call failed is recorded as ``unanswered`` and
 excluded from the LLM numbers (and counted), never passed off as an LLM verdict.
 """

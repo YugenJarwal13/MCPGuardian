@@ -1,4 +1,4 @@
-"""Task 6 — the hand-written response benchmark is well-formed and original."""
+"""The hand-written response benchmark is well-formed and original."""
 from __future__ import annotations
 
 import json

@@ -1,11 +1,11 @@
-"""Phase 7.3 / 11.2 — ADK case-lifecycle manager (the A2A receiver).
+"""ADK case-lifecycle manager (the A2A receiver).
 
 The case manager is a real Google ADK agent (``CaseManagerAgent``, a
-deterministic ``BaseAgent`` — no LLM needed to apply policy) run by an ADK
+deterministic ``BaseAgent`` - no LLM needed to apply policy) run by an ADK
 ``Runner``. Every incoming ``GuardianVerdictMessage`` is one ADK invocation:
 
-  1. the message arrives as the invocation's user content (over A2A — see
-     ``src/a2a_bridge/a2a_server.py`` — or via ``LocalA2AClient`` offline);
+  1. the message arrives as the invocation's user content (over A2A - see
+     ``src/a2a_bridge/a2a_server.py`` - or via ``LocalA2AClient`` offline);
   2. the agent applies ``combine_verdicts`` and yields an ``Event`` whose
      ``EventActions.state_delta`` writes the case under ``app:case:<case_id>``;
   3. the ADK session service persists that delta. ``app:``-prefixed keys are

@@ -1,4 +1,4 @@
-"""Phase 4.4 — batch runtime inspection over response-bearing cases.
+"""Batch runtime inspection over response-bearing cases.
 
 Runs the runtime auditor over every case that has a ``sample_response`` (DVMCP
 challenges 4/5/6/10 poison the response path; benign cases carry clean responses

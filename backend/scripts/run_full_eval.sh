@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Phase 8 / 11.5 — one-shot: ensure DVMCP is up, run the evaluation, tear down.
+# One-shot: ensure DVMCP is up, run the evaluation, tear down.
 #   bash scripts/run_full_eval.sh          # deterministic baseline
 #   bash scripts/run_full_eval.sh --llm    # LLM pipeline (needs provider creds in .env)
 set -euo pipefail

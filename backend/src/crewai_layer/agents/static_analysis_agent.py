@@ -1,4 +1,4 @@
-"""Phase 3.2 — the static-analysis agent.
+"""The static-analysis agent.
 
 Imports ``crewai`` at module load, so import this only on the LLM path (crew.py
 lazy-imports it). Offline runs use the deterministic heuristic instead.

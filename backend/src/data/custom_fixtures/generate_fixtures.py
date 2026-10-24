@@ -1,4 +1,4 @@
-"""Custom fixtures: the hand-written tool-RESPONSE benchmark (Task 6).
+"""Custom fixtures: the hand-written tool-RESPONSE benchmark.
 
 ``fixtures.json`` is generated from ``response_cases.py`` (50 cases: injected
 responses, plain benign data and hard negatives). The loader path is unchanged so

@@ -2,13 +2,13 @@
 
 These serve two purposes:
   1. A fast, zero-cost pre-filter in front of the (expensive, LLM-backed) agents.
-  2. A fully-offline FALLBACK so the whole pipeline — and its tests — run without
+  2. A fully-offline FALLBACK so the whole pipeline - and its tests - run without
      any LLM credentials. When ``LLM_PROVIDER`` credentials are present, the
      CrewAI agents in ``crew.py`` are the primary path and these become the
      pre-filter; when they are absent, these produce the verdict directly.
 
 The heuristics are intentionally conservative about false positives: an
-instruction-adjacent WORD in ordinary data is not enough — a signal must look
+instruction-adjacent WORD in ordinary data is not enough - a signal must look
 like a directive aimed at the agent, an encoding trick, or a purpose/scope
 mismatch before it moves the verdict off ``clean``.
 """
@@ -39,7 +39,7 @@ _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 # --- 3. Scope-mismatch inference ----------------------------------------------
 _BENIGN_PURPOSE = re.compile(r"\b(weather|calculator|calculate|add|sum|echo|greet|note|search|list\s+files|changelog|translate|time|date)\b", re.I)
 # Read-only intent words: a tool that describes itself this way should not need
-# write/delete/exec/egress capability — if it requests one, that is excessive scope.
+# write/delete/exec/egress capability - if it requests one, that is excessive scope.
 _READONLY_INTENT = re.compile(r"\b(read|reads|reading|get|gets|fetch|fetches|view|views|list|lists|show|shows|lookup|retrieve|retrieves|public)\b", re.I)
 _WRITE_CAPABILITY = re.compile(r"\b(write|writes|overwrite|delete|deletes|modify|rw)\b|['\"]w['\"]|['\"]rw['\"]|read\+?write|read/write", re.I)
 _SENSITIVE_SCOPE_HINTS = {
@@ -98,7 +98,7 @@ def static_heuristic(tool_name: str, tool_description: str, tool_schema: dict) -
 
     # A tool that ADVERTISES arbitrary code execution (eval/exec/shell=True/
     # run_command) in its own metadata is a static red flag regardless of its
-    # stated purpose — legitimate tools do not describe themselves this way.
+    # stated purpose - legitimate tools do not describe themselves this way.
     dangerous_capability: list[str] = []
     if _SENSITIVE_SCOPE_HINTS["code_execution"].search(blob):
         dangerous_capability.append("advertises arbitrary code execution in metadata")
@@ -149,7 +149,7 @@ def runtime_heuristic(tool_name: str, tool_response: str) -> InspectionVerdict:
     The response is DATA, not a command, unless it demonstrates directive intent
     aimed at the calling agent. Instruction-adjacent words in ordinary data (a
     changelog saying "ignore the deprecated v1 API", a news article ABOUT prompt
-    injection) are deliberately NOT enough to move the verdict off clean — the
+    injection) are deliberately NOT enough to move the verdict off clean - the
     same conservative directive scanner used for metadata enforces that.
     """
     text = tool_response or ""

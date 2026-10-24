@@ -1,4 +1,4 @@
-"""Phase 11.2 — enforcement through Google ADK's own tool-dispatch machinery.
+"""Enforcement through Google ADK's own tool-dispatch machinery.
 
 A scripted ``BaseLlm`` (no API key needed) makes a real ADK ``LlmAgent`` emit a
 function call; ADK then runs the Guardian ``before_tool_callback``. A blocked

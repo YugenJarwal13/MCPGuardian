@@ -1,18 +1,18 @@
-"""Phase 7 — the A2A bridge.
+"""The A2A bridge.
 
-The one genuine cross-framework hop in the system: CrewAI's reasoning output
+The cross-framework hop in the system: CrewAI's reasoning output
 becomes ADK's stateful input. The point of A2A here is the TRANSPORT between two
-frameworks, not a bespoke protocol — so the payload is a plain, serializable
+frameworks, not a bespoke protocol - so the payload is a plain, serializable
 Pydantic model and delivery goes through a transport client rather than a direct
 Python function call.
 
 Two transports share one ``send(destination, payload)`` contract:
 
-  * ``RemoteA2AClient`` — the LIVE path. Speaks the A2A protocol (JSON-RPC
+  * ``RemoteA2AClient`` - the LIVE path. Speaks the A2A protocol (JSON-RPC
     ``message/send`` over HTTP, via the ``a2a-sdk`` client) to the ADK case
     manager served by ``src/a2a_bridge/a2a_server.py``. The verdict crosses a
     real socket and is handled by ADK's ``A2aAgentExecutor`` on the far side.
-  * ``LocalA2AClient`` — in-process routing to registered handlers, kept as the
+  * ``LocalA2AClient`` - in-process routing to registered handlers, kept as the
     offline/test transport.
 
 Both record ``a2a_message_sent`` in the audit trail; the receiver records
@@ -59,7 +59,7 @@ class LocalA2AClient:
         self._routes[destination] = handler
 
     async def send(self, destination: str, payload: dict) -> Any:
-        # The hop is explicitly recorded so it is visible in the Phase 9 dashboard.
+        # The hop is explicitly recorded so it is visible in the dashboard.
         log_decision({
             "layer": "a2a", "event": "a2a_message_sent", "destination": destination,
             "case_id": payload.get("case_id"), "tool_name": payload.get("tool_name"),

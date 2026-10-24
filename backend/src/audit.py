@@ -1,8 +1,8 @@
 """Append-only audit trail.
 
 Every layer (static, runtime, behavioral, enforcement, a2a) writes a one-line
-JSON record here. This is the single source of truth the Phase 8 evaluator and
-the Phase 9 Streamlit dashboard both read, so the schema is intentionally loose
+JSON record here. This is the single source of truth the evaluator and
+the Streamlit dashboard both read, so the schema is intentionally loose
 (a flat dict) and every record carries at minimum a ``timestamp`` and ``layer``.
 """
 from __future__ import annotations

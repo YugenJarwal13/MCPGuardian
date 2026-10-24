@@ -1,4 +1,4 @@
-"""Phase 11.3 — the ADK PipelineManager served as a real A2A endpoint.
+"""The ADK PipelineManager served as a real A2A endpoint.
 
 ``google.adk.a2a.utils.agent_to_a2a.to_a2a`` turns the case-manager ADK agent
 into an A2A (JSON-RPC over HTTP) Starlette app: it publishes an agent card at

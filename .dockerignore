@@ -12,4 +12,3 @@ backend/src/evaluation/reports
 backend/tests
 docs
 *.md
-!deploy/hf/README.md

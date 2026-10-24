@@ -1,12 +1,12 @@
-"""Phase 3.4 / 4 — assemble and run the inspection crews.
+"""Assemble and run the inspection crews.
 
-``run_static_analysis`` (Phase 3) and ``run_runtime_inspection`` (Phase 4) both
+The static and runtime entry points both
 follow the same policy: use the LLM-backed CrewAI agent when provider credentials
 are configured, otherwise fall back to the deterministic heuristic so the
 pipeline stays fully runnable and testable offline. The two paths share the
 ``InspectionVerdict`` output contract, so callers never branch on which ran.
 
-Phase 11.4 — which path ACTUALLY ran is now explicit. ``analyze_static`` /
+Which path ran is explicit: ``analyze_static`` /
 ``analyze_runtime`` return ``(verdict, engine)`` where engine is one of:
 
     "llm"                 the CrewAI agent produced a valid structured verdict
@@ -265,7 +265,7 @@ def run_runtime_inspection(
 def analyze_runtime_timed(
     tool_name: str, tool_response: str, use_llm: bool | None = None
 ) -> tuple[InspectionVerdict, str, float]:
-    """``(verdict, engine, elapsed_ms)`` — latency is a first-class report number."""
+    """``(verdict, engine, elapsed_ms)`` - latency is a first-class report number."""
     verdict, engine, elapsed_ms, _meta = analyze_runtime_timed_meta(tool_name, tool_response, use_llm)
     return verdict, engine, elapsed_ms
 
@@ -284,7 +284,7 @@ def run_runtime_inspection_timed(
     """As above, but also returns per-call latency in milliseconds.
 
     This agent runs on EVERY tool call in production use, so its overhead is a
-    first-class number for the final report — measure it from day one.
+    first-class number for the final report - measure it from day one.
     """
     verdict, _engine, elapsed_ms = analyze_runtime_timed(tool_name, tool_response, use_llm)
     return verdict, elapsed_ms

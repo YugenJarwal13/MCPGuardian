@@ -23,8 +23,8 @@ Hosted models could not be used for this comparison: the OpenRouter account is o
 | v2 (few-shot) | 100.0% | 66.7% | 3/4 | 2/4 | 3/4 | 0/4 | 0/4 |
 | Heuristic (same cases) | 85.7% | 50.0% | 2/4 | 1/4 | 3/4 | 1/4 | 0/4 |
 
-**Reading it honestly.** v1 and v2 differ by one case in each direction (v1 made one false positive on a real
-benign tool; v2 missed one MCPTox attack). With 28 cases that is **indistinguishable from noise**, so the honest
+**Reading the result.** v1 and v2 differ by one case in each direction (v1 made one false positive on a real
+benign tool; v2 missed one MCPTox attack). With 28 cases that is **indistinguishable from noise**, so the fair
 conclusion is "v2 is not shown to be better than v1 on this model". Both beat the regex on the same cases.
 
 **DVMCP Challenge 2 under the clean prompt.** v2 quotes the Challenge 2 and Challenge 10 descriptions as examples,
@@ -54,9 +54,9 @@ the heuristic's known miss without having seen the text.
 
 ## What each version contains
 
-- **v1** — the original zero-shot checklist (static) and the original two-positive / two-negative few-shot prompt
+- **v1** - the original zero-shot checklist (static) and the original two-positive / two-negative few-shot prompt
   (runtime, including a changelog "ignore the deprecated v1 API" negative).
-- **v2** — adds few-shot pairs for the failure modes seen on real data: a hidden directive with a secrecy clause
+- **v2** - adds few-shot pairs for the failure modes seen on real data: a hidden directive with a secrecy clause
   (DVMCP Challenge 2), a cross-tool instruction with no tags (Challenge 10), priority-override claims, scope
   mismatch, capability words that are not intent (real benign tool wording), an injection echoed inside a
   legitimate result, a coercive rug-pull response, and instruction-like words inside ordinary data.
@@ -71,8 +71,8 @@ the results ("what is and is not held out"). Prefer MCPTox and v1 when asking wh
 
 ## Not yet done
 
-- v1 vs v2 on a larger sample than 28 cases (hosted needs more than 50 requests/day — add credits); at n=28 only
+- v1 vs v2 on a larger sample than 28 cases (hosted needs more than 50 requests/day - add credits); at n=28 only
   large effects are visible.
-- A v3 built from the models' own errors (add examples from DVMCP / benign / fixtures only — never MCPTox).
+- A v3 built from the models' own errors (add examples from DVMCP / benign / fixtures only - never MCPTox).
   One concrete failure to learn from: `custom-resp-atk-03`, where the 4B model *quoted* the injected
   "Instruction for the summarizer" in its reasoning but still answered `clean`.

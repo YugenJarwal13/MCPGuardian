@@ -1,4 +1,4 @@
-"""Task 8.3 — "Test a MCP server LIVE": a user-supplied MCP endpoint streams through the
+""""Test a MCP server LIVE": a user-supplied MCP endpoint streams through the
 same pipeline. Uses a tiny real MCP server (FastMCP over SSE) started on a free port,
 so it needs neither the DVMCP lab nor an LLM."""
 from __future__ import annotations

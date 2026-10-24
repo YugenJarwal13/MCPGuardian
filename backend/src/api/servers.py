@@ -1,10 +1,10 @@
-"""``GET /servers`` — the selectable MCP servers, built from the existing loaders.
+"""``GET /servers`` - the selectable MCP servers, built from the existing loaders.
 
 Two kinds of server:
   * live DVMCP challenges (``dvmcp-chN``) reached over MCP/SSE on 127.0.0.1:900N;
-    ``live`` is a real port check, so the UI shows which are actually running.
+    ``live`` is a real port check, so the UI shows which are running.
   * in-process fixtures from ``src/demo_agent/agent_config.py`` (clean reference,
-    tricky-but-clean, and offline stand-ins for each attack class) — always
+    tricky-but-clean, and offline stand-ins for each attack class) - always
     available, and labelled ``source: "in-process fixture"``, never as live.
 """
 from __future__ import annotations
@@ -33,7 +33,7 @@ _TITLES = {
     8: "Malicious Code Execution", 9: "Remote Access Control", 10: "Multi-Vector Attack",
 }
 
-# Document text used to drive challenge 6's echo vulnerability in the demo — the
+# Document text used to drive challenge 6's echo vulnerability in the demo - the
 # same injected note as the repo's offline fixture for this challenge.
 CH6_DEMO_DOCUMENT = (
     "Quarterly report: revenue grew 4% quarter on quarter.\n"
@@ -63,7 +63,7 @@ def _tricky_clean_server() -> FakeMCPSession:
 
 def _notes_writer_server() -> FakeMCPSession:
     """Clean tool that WRITES files: never malicious, but its scope
-    (filesystem_write) always needs a human — the human-in-the-loop demo."""
+    (filesystem_write) always needs a human - the human-in-the-loop demo."""
     return FakeMCPSession(
         tools=[{"name": "save_note", "description": "Saves a note to the user's notes folder.",
                 "inputSchema": {"type": "object", "properties": {
@@ -194,7 +194,7 @@ def get_spec(server_id: str) -> ServerSpec:
 async def open_session(spec: ServerSpec) -> AsyncIterator[Any]:
     """Yield an MCP session (real ClientSession over SSE, or an in-process
     fixture). Fixture sessions persist per server so call counts accumulate
-    across runs — that is what lets the rug-pull fixture flip on call 11."""
+    across runs - that is what lets the rug-pull fixture flip on call 11."""
     if spec.factory is not None:
         if spec.id not in _FIXTURE_SESSIONS:
             _FIXTURE_SESSIONS[spec.id] = spec.factory()

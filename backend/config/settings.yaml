@@ -7,7 +7,7 @@ llm:
   temperature: 0.0        # deterministic security reasoning
 
 thresholds:
-  # Behavioral-anomaly (Phase 5) tuning knobs.
+  # Behavioral-anomaly tuning knobs.
   response_length_zscore: 3.0
   fingerprint_warmup_samples: 5
   # Confidence below this is treated as "low confidence" in the audit trail.

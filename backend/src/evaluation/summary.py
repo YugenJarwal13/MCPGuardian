@@ -1,4 +1,4 @@
-"""Writes ``frontend/src/data/results.json`` — the numbers the landing page shows.
+"""Writes ``frontend/src/data/results.json`` - the numbers the landing page shows.
 
 Everything is derived from the per-case file of the full local-LLM run
 (``reports/cases_ollama_full.jsonl``) with the same ``metrics`` / ``wilson`` helpers the

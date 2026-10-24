@@ -4,7 +4,7 @@ const COPY = {
   allow: ["ALLOW", "The response was delivered to the agent.", Check, "allow"],
   block: ["BLOCK", "Nothing malicious reached the agent.", Cross, "block"],
   escalate_approved: ["ALLOWED by a human", "A reviewer approved it; the response was released.", Question, "escalate"],
-  escalate_denied: ["BLOCK — denied by a human", "A reviewer withheld the response.", Cross, "block"],
+  escalate_denied: ["BLOCK: denied by a human", "A reviewer withheld the response.", Cross, "block"],
 };
 
 const short = (m) => (m ? m.split("/").pop().replace(/:free$/, "") : "?");
@@ -27,7 +27,7 @@ export default function VerdictBanner({ done }) {
         <span className="v-icon">{flagged ? <Alert /> : <Check />}</span>
         <div>
           <div className="v-title">{flagged ? `${flagged} of ${tools.length} tools flagged` : `All ${tools.length} tools look clean`}</div>
-          <div className="v-sub">Static inspection only — no tool was called.</div>
+          <div className="v-sub">Static inspection only. No tool was called.</div>
         </div>
       </div>
     );

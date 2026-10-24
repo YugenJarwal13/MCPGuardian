@@ -6,10 +6,10 @@ challenge modules unmodified and serves them on the same ports and ``/sse`` path
 
 Two server variants ship upstream, and they differ in a way that matters:
 
-  * ``server_sse.py`` (``--variant sse``) — what the upstream Dockerfile serves on
+  * ``server_sse.py`` (``--variant sse``) - what the upstream Dockerfile serves on
     9001-9010. Its tools are SIMPLIFIED: e.g. challenge 2's tool descriptions
     contain no hidden instructions at all.
-  * ``server.py`` (``--variant full``, the default) — the stdio variant, which
+  * ``server.py`` (``--variant full``, the default) - the stdio variant, which
     carries the documented attacks verbatim (``<IMPORTANT>`` / ``<HIDDEN>`` poisoned
     descriptions, the challenge-4 description swap, challenge-5 shadowing tools).
     We serve its ``FastMCP`` object over SSE via ``FastMCP.sse_app()`` on the same

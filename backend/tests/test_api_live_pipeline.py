@@ -1,8 +1,8 @@
-"""Task 6 backend — the WebSocket streams real pipeline stages.
+"""The WebSocket streams real pipeline stages.
 
 Uses the in-process fixture servers (no DVMCP lab, no LLM key needed); the app's
 lifespan still starts the real A2A case-manager server, so the a2a_hop stage
-is a genuine HTTP hop here too.
+is a real HTTP hop here too.
 """
 from __future__ import annotations
 

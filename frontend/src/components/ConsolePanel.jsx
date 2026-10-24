@@ -14,11 +14,11 @@ export default function ConsolePanel({ events, running }) {
     <section className="term" aria-label="Backend console">
       <header className="term-bar">
         <span className="tl r" /><span className="tl y" /><span className="tl g" />
-        <span className="term-title">guardian — backend events{events[0]?.trace_id ? ` · trace ${events[0].trace_id.slice(0, 12)}` : ""}</span>
+        <span className="term-title">guardian · backend events{events[0]?.trace_id ? ` · trace ${events[0].trace_id.slice(0, 12)}` : ""}</span>
         <span className="term-live">{running ? <><i className="live-pip" /> live</> : events.length ? "finished" : "idle"}</span>
       </header>
       <div className="term-body" ref={box} tabIndex={0}>
-        {events.length === 0 && <div className="term-line dim">$ waiting for a run — every backend step will be printed here…</div>}
+        {events.length === 0 && <div className="term-line dim">$ waiting for a run. Every backend step is printed here.</div>}
         {events.map((ev, i) => {
           const l = consoleLine(ev);
           return (

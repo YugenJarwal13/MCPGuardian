@@ -133,7 +133,7 @@ function Detail({ stage, detail, message }) {
   );
 }
 
-/** A calm, inline decision moment — not a modal. */
+/** Inline approval panel (not a modal). */
 function DecisionPanel({ detail, onApprove, message }) {
   const why = detail.reason || (detail.anomalous ? "The behavioural layer saw this tool change." : message);
   return (

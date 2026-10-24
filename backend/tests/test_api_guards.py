@@ -62,13 +62,22 @@ def test_public_mode_rate_limits_a_visitor(client, monkeypatch):
     pm.reset_limiter()
 
 
-def test_public_mode_spent_ai_budget_degrades_to_regex_and_says_so(client, monkeypatch):
+def test_public_mode_refuses_when_the_daily_ai_budget_is_spent(client, monkeypatch):
     monkeypatch.setenv("GUARDIAN_PUBLIC", "1")
     monkeypatch.setenv("GUARDIAN_LLM_RUNS_PER_DAY", "0")
     pm.reset_limiter()
     evs = _run(client, {"server_id": "demo-clean", "tool_name": "calculator",
                         "arguments": {"expression": "2+2"}, "use_llm": True})
-    connect = next(e for e in evs if e["stage"] == "connect" and e["status"] == "passed")
-    assert "budget" in connect["detail"]["note"].lower()
-    assert evs[-1]["stage"] == "done" and evs[-1]["status"] != "error"
+    assert evs[0]["detail"]["guard"] == "budget" and "00:00 UTC" in evs[0]["message"]
+    again = _run(client, {"server_id": "demo-clean", "use_llm": False})      # the slot was released
+    assert again[-1]["stage"] == "done" and again[0].get("detail", {}).get("guard") is None
     pm.reset_limiter()
+
+
+def test_a_run_that_needs_a_model_is_refused_when_none_is_reachable(client, monkeypatch):
+    from src.api import runner
+    monkeypatch.setattr(runner, "llm_available", lambda: False)
+    evs = _run(client, {"server_id": "demo-clean", "tool_name": "calculator",
+                        "arguments": {"expression": "2+2"}, "use_llm": True})
+    assert [e["stage"] for e in evs] == ["connect", "done"]
+    assert evs[0]["status"] == "error" and "language model" in evs[0]["message"]

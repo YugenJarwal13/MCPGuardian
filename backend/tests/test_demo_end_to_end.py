@@ -1,4 +1,4 @@
-"""Phase 10 — end-to-end demo behaviour is locked by tests.
+"""End-to-end demo behaviour is locked by tests.
 
 Proves the four demo scenarios route through the real GuardedMCPClient +
 interceptor pipeline and produce the expected allow/block outcomes.

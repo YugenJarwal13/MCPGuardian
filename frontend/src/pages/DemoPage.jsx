@@ -4,14 +4,14 @@ import { Info, Play } from "../components/Icons.jsx";
 import RunView from "../components/RunView.jsx";
 import { usePipelineRun } from "../hooks/usePipelineRun.js";
 
-const label = (s) => s.name.replace(/^DVMCP\s*[-–:]?\s*/i, "").replace(/^Challenge\s*/i, "Ch. ");
+const shortName = (s) => s.name.replace(/^DVMCP\s*[-–:]?\s*/i, "").replace(/^Challenge\s*/i, "Ch. ");
 
 function Chip({ s, selected, onSelect, disabled }) {
   const offline = s.port && !s.live;
   return (
     <button type="button" className={`pick-chip${offline ? " off" : ""}`} aria-pressed={selected} disabled={disabled}
       onClick={() => onSelect(s)} title={s.attack_category ? s.attack_category.replaceAll("_", " ") : "in-process fixture"}>
-      {s.port ? <span className={`d${s.live ? "" : " off"}`} /> : null}{label(s)}
+      {s.port ? <span className={`d${s.live ? "" : " off"}`} /> : null}{shortName(s)}
     </button>
   );
 }
@@ -23,9 +23,10 @@ export default function DemoPage({ health }) {
   const [toolsError, setToolsError] = useState(null);
   const [toolName, setToolName] = useState("");
   const [argsText, setArgsText] = useState("{}");
-  const [useLlm, setUseLlm] = useState(true);
   const [formError, setFormError] = useState(null);
   const { events, running, error, start, approve, reset } = usePipelineRun();
+
+  const modelReady = !health || health.llm?.available;
 
   const selectServer = (s) => {
     reset();
@@ -36,7 +37,7 @@ export default function DemoPage({ health }) {
     setToolName(s.default_tool || "");
     setArgsText(JSON.stringify(s.default_args || {}, null, 2));
     if (s.port && !s.live) {
-      setToolsError(`This DVMCP server is not running on port ${s.port}. Start the lab with: python scripts/run_dvmcp_native.py`);
+      setToolsError(`This DVMCP server is not running on port ${s.port}. Start the lab with start-lab.cmd.`);
       return;
     }
     fetchTools(s.id)
@@ -59,7 +60,7 @@ export default function DemoPage({ health }) {
           || data.poisoned.find((s) => s.live) || data.clean[0];
         if (first) selectServer(first);
       })
-      .catch((e) => setFormError(`Cannot reach the API: ${e.message}. Start it with: bash backend/scripts/run_api.sh`));
+      .catch((e) => setFormError(`Cannot reach the API: ${e.message}. Start it with start-backend.cmd.`));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -78,10 +79,8 @@ export default function DemoPage({ health }) {
       return;
     }
     setFormError(null);
-    start({ server_id: server.id, tool_name: toolName || null, arguments: args, use_llm: useLlm });
+    start({ server_id: server.id, tool_name: toolName || null, arguments: args, use_llm: true });
   };
-
-  const llmReady = health?.llm?.available;
 
   return (
     <main className="site">
@@ -89,13 +88,13 @@ export default function DemoPage({ health }) {
         <div className="wrap">
           <div className="eyebrow">Live demo</div>
           <h1>Watch Guardian protect an agent, one step at a time.</h1>
+          <p className="lead sm">Pick a server, run one tool call, and follow every check as the real backend performs it.</p>
           <div className="about-note">
             <span className="ic"><Info /></span>
             <p>
-              <b>About this demo.</b> The servers below come from <b>DVMCP</b> (Damn Vulnerable MCP Server), an open-source
-              training lab of ten deliberately vulnerable MCP servers, alongside a few offline stand-ins and clean reference servers. We use them purely as a
-              controlled dataset to demonstrate the pipeline; nothing here touches a real service. Every step you see is
-              produced by the real backend: the CrewAI inspectors, the Google ADK behaviour layer and the A2A hand-off.
+              <b>About the data.</b> The poisoned servers come from <b>DVMCP</b> (Damn Vulnerable MCP Server), an open-source lab
+              of ten deliberately vulnerable MCP servers. It is used here only as a controlled dataset to demonstrate the
+              pipeline, alongside a few offline stand-ins and clean reference servers. Nothing on this page touches a real service.
             </p>
           </div>
         </div>
@@ -103,21 +102,21 @@ export default function DemoPage({ health }) {
 
       <div className="wrap" style={{ paddingBottom: 96 }}>
         <div className="stack-lg">
-          <div className="panel ctrl">
-            <div>
-              <div className="panel-title">1 · Pick a server</div>
+          <div className="ctrl-card">
+            <div className="ctrl-col">
+              <div className="ctrl-title"><i>1</i> Pick a server</div>
               {!servers && !formError && <p className="muted">Loading servers…</p>}
               {servers && (
                 <>
-                  <div className="group-h">Poisoned (should be caught)</div>
+                  <div className="group-h">Poisoned · should be caught</div>
                   <div className="chips-pick">{servers.poisoned.map((s) => <Chip key={s.id} s={s} selected={server?.id === s.id} onSelect={selectServer} disabled={running} />)}</div>
-                  <div className="group-h">Clean (should sail through)</div>
+                  <div className="group-h">Clean · should pass</div>
                   <div className="chips-pick">{servers.clean.map((s) => <Chip key={s.id} s={s} selected={server?.id === s.id} onSelect={selectServer} disabled={running} />)}</div>
                 </>
               )}
             </div>
-            <div>
-              <div className="panel-title">2 · Run it{server ? <span className="muted"> · {server.name}</span> : null}</div>
+            <div className="ctrl-col">
+              <div className="ctrl-title"><i>2</i> Run a tool call{server ? <span className="muted"> on {server.name}</span> : null}</div>
               {server ? (
                 <>
                   <label className="field">
@@ -128,19 +127,15 @@ export default function DemoPage({ health }) {
                       </select>
                     ) : <input className="input" value={toolName} readOnly />}
                   </label>
-                  <label className="field">
-                    <span>Arguments (JSON)</span>
+                  <details className="args-box">
+                    <summary>Arguments (JSON)</summary>
                     <textarea className="textarea" value={argsText} onChange={(e) => setArgsText(e.target.value)}
                       rows={Math.min(6, argsText.split("\n").length + 1)} spellCheck={false} disabled={running} />
-                  </label>
-                  <div className="row" style={{ marginTop: 14 }}>
-                    <button type="button" className="btn primary" onClick={run} disabled={running || !!toolsError}>
+                  </details>
+                  <div className="row" style={{ marginTop: 16 }}>
+                    <button type="button" className="btn primary lg grow" onClick={run} disabled={running || !!toolsError || !modelReady}>
                       {running ? <><span className="spinner" /> Running</> : <><Play /> Run the pipeline</>}
                     </button>
-                    <label className="switch" title={llmReady ? "" : "No model is configured: the API falls back to the regex rules"}>
-                      <input type="checkbox" checked={useLlm} onChange={(e) => setUseLlm(e.target.checked)} disabled={running} />
-                      Use AI inspectors
-                    </label>
                     <button type="button" className="btn quiet" disabled={running} title="Forget this server's behavioural history"
                       onClick={() => resetServer(server.id).then(reset)}>Reset history</button>
                   </div>
@@ -148,7 +143,7 @@ export default function DemoPage({ health }) {
               ) : <p className="muted">Choose a server on the left.</p>}
               {(formError || error) && <div className="notice error" style={{ marginTop: 12 }}>{formError || error}</div>}
               {toolsError && <div className="notice warn" style={{ marginTop: 12 }}>{toolsError}</div>}
-              {useLlm && health && !llmReady && <div className="notice warn" style={{ marginTop: 12 }}>No language model is reachable, so the inspectors will run on regex rules. Each step labels which engine answered.</div>}
+              {!modelReady && <div className="notice error" style={{ marginTop: 12 }}>No language model is reachable, so the pipeline cannot run. Check the backend's OpenRouter settings.</div>}
             </div>
           </div>
 

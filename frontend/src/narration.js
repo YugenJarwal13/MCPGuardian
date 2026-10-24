@@ -28,7 +28,7 @@ export function engineLabel(state) {
 }
 
 /**
- * @param {object} fold   foldEvents(events) — one entry per stage
+ * @param {object} fold   foldEvents(events), one entry per stage
  * @param {object|null} last   the most recently revealed event
  * @returns {{title:string, body:string, tone:string, tech:string}}
  */

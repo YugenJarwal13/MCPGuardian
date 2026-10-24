@@ -1,4 +1,4 @@
-"""Phase 1.2 — the one unified schema every data source conforms to.
+"""The one unified schema every data source conforms to.
 
 Every loader (DVMCP, MCPTox, benign, custom) emits this exact shape so nothing
 downstream needs to know which source a case came from.
@@ -28,7 +28,7 @@ class ToolTestCase(BaseModel):
     def requested_scope(self) -> Optional[str]:
         """The sensitive scope this tool's PARAMETER SCHEMA actually grants, or None.
 
-        Phase 12.7 — schema-based. The earlier rule substring-matched the whole
+        schema-based. The earlier rule substring-matched the whole
         description ("upload", "write", "token", ...), so prose that merely *mentioned*
         a capability escalated benign tools (benign FPR 3.3% -> 17.3%). This rule
         asks what the caller can actually DO through the parameters:

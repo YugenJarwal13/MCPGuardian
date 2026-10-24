@@ -1,4 +1,4 @@
-"""Phase 4.1 — the runtime-inspection agent.
+"""The runtime-inspection agent.
 
 Same InspectionVerdict output contract as the static agent, but reasoning over a
 tool RESPONSE, not metadata. Imported only on the LLM path.

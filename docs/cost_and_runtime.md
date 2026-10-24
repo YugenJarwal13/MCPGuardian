@@ -1,4 +1,4 @@
-# MCP Guardian — cost and running-time estimates
+# MCP Guardian - cost and running-time estimates
 
 Everything here is measured from the project's own records unless it is marked **estimate**. Regenerate the
 numbers with `cd backend && python -m src.evaluation.cost`. No provider price list was consulted: dollar figures

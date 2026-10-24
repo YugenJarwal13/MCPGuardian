@@ -57,13 +57,17 @@ export default function RunView({ events, running, onApprove, serverName, notRun
   const fold = foldEvents(events);
   const done = [...events].reverse().find((e) => e.stage === "done");
   return (
-    <div className="stack-lg">
+    <div className="stack-lg flush">
       <PipelineScene events={events} serverName={serverName} notRun={notRun} />
-      <SceneNarration events={events} />
-      <ApprovalPanel fold={fold} onApprove={onApprove} />
-      {done && <VerdictBanner done={done} />}
+      <div className="cols-2">
+        <div className="stack-lg flush">
+          <SceneNarration events={events} />
+          <ApprovalPanel fold={fold} onApprove={onApprove} />
+          {done && <VerdictBanner done={done} />}
+        </div>
+        <ConsolePanel events={events} running={running} />
+      </div>
       {done && showCompare && <Compare fold={fold} done={done} />}
-      <ConsolePanel events={events} running={running} />
       <details className="under-hood">
         <summary>Under the hood: every stage in detail</summary>
         <div><PipelineView events={events} onApprove={onApprove} notRun={notRun} /></div>

@@ -1,4 +1,4 @@
-"""Phase 11.3 — a verdict crosses a real A2A transport (HTTP JSON-RPC).
+"""A verdict crosses a real A2A transport (HTTP JSON-RPC).
 
 Starts the ADK case manager as an A2A server on a real socket, sends through
 ``RemoteA2AClient`` and asserts the case landed in the manager's ADK state.

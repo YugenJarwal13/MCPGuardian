@@ -4,7 +4,7 @@
 
 On startup the ADK case manager is served as a real A2A endpoint (its own HTTP
 listener, SQLite-backed ADK sessions in logs/cases.db) and the pipeline talks to
-it through ``RemoteA2AClient`` — the ``a2a_hop`` stage is a genuine network hop.
+it through ``RemoteA2AClient`` - the ``a2a_hop`` stage is a real network hop.
 """
 from __future__ import annotations
 

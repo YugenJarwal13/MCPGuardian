@@ -1,4 +1,4 @@
-"""Phase 4.4 — runtime-inspection behaviour tests (deterministic path).
+"""Runtime-inspection behaviour tests (deterministic path).
 
 The critical pair: it must FLAG response-path attacks (DVMCP 5 & 6) while NOT
 flagging benign data that merely contains instruction-adjacent words.

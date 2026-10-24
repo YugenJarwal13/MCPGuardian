@@ -316,7 +316,7 @@ def write_report() -> Path:
         recs = det[1]
         lines += ["## Deployed policy and the scope rule", "",
                   "The policy additionally escalates any tool whose *parameter schema* grants a sensitive scope "
-                  "(credential, code execution, network egress, file write). Before Phase 12 this was a keyword match "
+                  "(credential, code execution, network egress, file write). Before this was a keyword match "
                   "over the whole description. Same data, both rules (deterministic verdicts, combined config):", "",
                   "| Rule | Benign real tools escalated | Benign hand-written escalated | MCPTox tools with a scope | MCPTox policy recall |",
                   "|---|---|---|---|---|"]
@@ -329,7 +329,7 @@ def write_report() -> Path:
             lines.append(f"| {nm} | {_rate_cell(g['benign_real']['flagged'], g['benign_real']['n'])} | "
                          f"{_rate_cell(g['benign_hand']['flagged'], g['benign_hand']['n'])} | "
                          f"{scoped}/{len(mt)} | {_rate_cell(g['mcptox']['flagged'], g['mcptox']['n'])} |")
-        lines += ["", "Benign tools escalated by the schema rule genuinely take a path+content, URL, command or secret "
+        lines += ["", "Benign tools escalated by the schema rule really take a path+content, URL, command or secret "
                   "parameter (e.g. `write_file`), so the policy is *designed* to ask a human about them; that is a cost, "
                   "not a detector error. The old rule's extra \"recall\" on MCPTox came from keywords in the poisoned "
                   "descriptions, not from detection.", ""]
@@ -404,7 +404,7 @@ def write_report() -> Path:
         lines.append("")
 
     # ---- limitations
-    lines += ["## Honest limitations", "",
+    lines += ["## Limitations", "",
               "- **The LLM was evaluated on small samples, not all 1,762 cases.** The OpenRouter account is on the "
               "free tier, which allows **50 requests per day** for `:free` models (HTTP 429 `free-models-per-day`, "
               "resetting 00:00 UTC; $10 of credits raises it to 1,000/day). The run therefore stopped after a few dozen "

@@ -39,3 +39,4 @@ Thumbs.db
 
 # Keep empty dirs tracked
 !**/.gitkeep
+.claude/

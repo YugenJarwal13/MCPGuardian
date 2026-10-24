@@ -3,8 +3,8 @@
 This is where the enforcement layer runs inside Google ADK's own machinery:
 the interceptor's policy is attached as the agent's ``before_tool_callback``, so
 ADK itself refuses to dispatch a blocked tool (the callback raises
-``GuardianBlockedError`` before the tool — e.g. an ``McpToolset`` tool that would
-call ``session.call_tool()`` — is invoked).
+``GuardianBlockedError`` before the tool - e.g. an ``McpToolset`` tool that would
+call ``session.call_tool()`` - is invoked).
 """
 from __future__ import annotations
 

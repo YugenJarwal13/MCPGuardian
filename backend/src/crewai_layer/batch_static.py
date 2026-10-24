@@ -1,7 +1,7 @@
-"""Phase 3.5 — batch static analysis over the full Phase 1 dataset.
+"""Batch static analysis over the full dataset.
 
 Runs every case through ``run_static_analysis``, logs each verdict to
-``logs/audit_trail.jsonl`` in the shared schema the Phase 8 evaluator and Phase 9
+``logs/audit_trail.jsonl`` in the shared schema the evaluator and the
 dashboard both read, and prints a first-pass precision/recall/F1 plus the benign
 false-positive rate. Uses the deterministic heuristic offline; the LLM agent when
 credentials are set.

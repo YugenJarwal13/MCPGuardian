@@ -1,7 +1,7 @@
 """A CrewAI-native LLM backed by ``src.llm_chain.ChainLLM``.
 
 CrewAI's agent loop (ReAct) only accepts text containing ``Final Answer:``; a bare
-JSON reply makes it re-prompt the model until ``max_iter`` — which multiplies
+JSON reply makes it re-prompt the model until ``max_iter`` - which multiplies
 latency and (on a quota-limited key) burns requests. This LLM therefore returns
 ``Thought: ...\\nFinal Answer: <json>`` so one call completes the agent, and
 ``output_pydantic`` then parses the JSON into an ``InspectionVerdict``.

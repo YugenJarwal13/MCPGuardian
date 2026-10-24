@@ -9,7 +9,7 @@ export function readStoredTheme() {
     const t = localStorage.getItem(KEY);
     if (t === "dark" || t === "light") return t;
   } catch {
-    /* storage unavailable (private mode) — fall back to light */
+    /* storage unavailable (private mode): fall back to light */
   }
   return "light";
 }

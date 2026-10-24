@@ -1,7 +1,7 @@
-"""Phase 8.1 — evaluation metrics (introduced early for the Phase 3 first-pass).
+"""Evaluation metrics (introduced early for the first-pass).
 
 A "detection" counts when a malicious case is flagged as either ``malicious`` or
-``suspicious`` — both route to a non-ALLOW enforcement decision, so both are
+``suspicious`` - both route to a non-ALLOW enforcement decision, so both are
 successful catches from the system's point of view.
 """
 from __future__ import annotations

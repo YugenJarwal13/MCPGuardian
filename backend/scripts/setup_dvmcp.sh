@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Phase 1.1 — clone, build, and run the DVMCP challenge lab.
+# Clone, build, and run the DVMCP challenge lab.
 # Requires Docker (Linux containers). Idempotent-ish: re-running rebuilds.
 set -euo pipefail
 

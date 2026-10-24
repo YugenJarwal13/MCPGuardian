@@ -1,12 +1,12 @@
-"""Phase 5.2 / 5.3 — behavioral-anomaly detection.
+"""Behavioral-anomaly detection.
 
 Two layers:
-  * ``update_fingerprint_and_score`` — pure, deterministic Welford scoring that
+  * ``update_fingerprint_and_score`` - pure, deterministic Welford scoring that
     runs BEFORE any LLM reasoning. This is what the rug-pull test pins exactly.
-  * ``BehavioralAnomalyAgent`` — wraps a real ``google.adk`` ``LlmAgent`` that is
+  * ``BehavioralAnomalyAgent`` - wraps a real ``google.adk`` ``LlmAgent`` that is
     the JUDGMENT layer on top of the numeric signal: given the z-score / new-key
     evidence plus the previous and current response text, it decides whether the
-    drift is a genuine rug pull worth escalating and explains why. With
+    drift is a real rug pull worth escalating and explains why. With
     ``use_llm=False`` (or no credentials) it stays on the pure-statistical path
     with a templated explanation.
 """
@@ -130,7 +130,7 @@ class BehavioralAnomalyAgent:
 
     Order of operations is fixed: the statistics ALWAYS run first and are
     recorded. The ADK agent is only consulted when the statistics flag a change
-    (it never sees — or pays latency for — steady-state calls), and any failure
+    (it never sees - or pays latency for - steady-state calls), and any failure
     on the LLM path falls back to the statistical decision."""
 
     def __init__(self, use_llm: bool | None = None, model=None):

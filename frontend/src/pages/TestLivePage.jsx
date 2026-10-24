@@ -11,7 +11,11 @@ const EXAMPLES = [
 const PUBLIC_EXAMPLES = [
   ["DeepWiki", "https://mcp.deepwiki.com/mcp"],
   ["Microsoft Learn", "https://learn.microsoft.com/api/mcp"],
-  ["GitMCP (any repo)", "https://gitmcp.io/modelcontextprotocol/servers"],
+  ["Cloudflare Docs", "https://docs.mcp.cloudflare.com/mcp"],
+  ["Context7", "https://mcp.context7.com/mcp"],
+  ["CoinGecko", "https://mcp.api.coingecko.com/mcp"],
+  ["Hugging Face Hub", "https://huggingface.co/mcp"],
+  ["GitMCP", "https://gitmcp.io/modelcontextprotocol/servers"],
 ];
 const NOT_RUN_WHEN_INSPECTING = ["tool_call", "runtime_check", "behavioral_check", "a2a_hop", "enforcement"];
 const clip = (s, n) => (s && s.length > n ? `${s.slice(0, n - 1)}…` : s || "");
@@ -44,13 +48,13 @@ function Steps({ step }) {
 
 export default function TestLivePage({ health }) {
   const [url, setUrl] = useState("");
-  const [useLlm, setUseLlm] = useState(true);
   const [mode, setMode] = useState("inspect");           // what the current / last run was
   const [pickedTool, setPickedTool] = useState(null);
   const [argsText, setArgsText] = useState("{}");
   const [formError, setFormError] = useState(null);
   const { events, running, error, start, approve, reset } = usePipelineRun();
 
+  const modelReady = !health || health.llm?.available;
   const done = [...events].reverse().find((e) => e.stage === "done");
   const inspected = [...events].reverse().find((e) => e.stage === "done" && e.detail?.inspect_only);
   const tools = inspected ? inspected.detail.tools : null;
@@ -66,7 +70,7 @@ export default function TestLivePage({ health }) {
     setFormError(null);
     setMode("inspect");
     setPickedTool(null);
-    start({ server_url: u, inspect_only: true, use_llm: useLlm });
+    start({ server_url: u, inspect_only: true, use_llm: true });
   };
 
   const pick = (t) => {
@@ -84,7 +88,7 @@ export default function TestLivePage({ health }) {
     }
     setFormError(null);
     setMode("call");
-    start({ server_url: url.trim(), tool_name: pickedTool, arguments: args, use_llm: useLlm });
+    start({ server_url: url.trim(), tool_name: pickedTool, arguments: args, use_llm: true });
   };
 
   const clear = () => {
@@ -99,7 +103,7 @@ export default function TestLivePage({ health }) {
         <div className="wrap">
           <div className="eyebrow">Check any server</div>
           <h1>Connect to a live MCP server. Find out if it’s safe.</h1>
-          <p className="lead">Paste the web address of an MCP server. Guardian connects, reads every tool it offers with the same AI inspectors, and tells you in plain words whether anything is hiding in there.</p>
+          <p className="lead">Paste the web address of an MCP server. Guardian connects, has its AI inspectors read every tool it offers, and tells you in plain words whether anything is hiding in there.</p>
 
           <div className="checker">
             <label className="urlbox">
@@ -108,22 +112,19 @@ export default function TestLivePage({ health }) {
               <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://your-server.example.com/sse" spellCheck={false}
                 disabled={running} onKeyDown={(e) => e.key === "Enter" && !running && url.trim() && inspect()} />
             </label>
-            <button type="button" className="btn primary lg" onClick={inspect} disabled={running || !url.trim()}>
+            <button type="button" className="btn primary lg" onClick={inspect} disabled={running || !url.trim() || !modelReady}>
               {running && mode === "inspect" ? <><span className="spinner" /> Checking</> : <>Check if it’s safe <Arrow /></>}
             </button>
           </div>
           <div className="row" style={{ marginTop: 14, maxWidth: 980 }}>
-            <span className="muted" style={{ fontSize: "var(--fs-sm)" }}>{health?.public_mode ? "Try a public MCP server:" : "Try a public server or a DVMCP one (start the lab first):"}</span>
+            <span className="muted" style={{ fontSize: "var(--fs-sm)" }}>{health?.public_mode ? "Try a public MCP server:" : "Try a public server, or a DVMCP one (start the lab first):"}</span>
             {[...PUBLIC_EXAMPLES, ...(health?.public_mode ? [] : EXAMPLES)].map(([l, u]) => (
               <button key={u} type="button" className="pick-chip" onClick={() => setUrl(u)} disabled={running}>{l}</button>
             ))}
-            <label className="switch" style={{ marginLeft: "auto" }} title={health?.llm?.available ? "" : "No model configured: regex rules will be used"}>
-              <input type="checkbox" checked={useLlm} onChange={(e) => setUseLlm(e.target.checked)} disabled={running} />
-              Use AI inspectors
-            </label>
             {events.length > 0 && !running && <button type="button" className="btn quiet" onClick={clear}>Clear</button>}
           </div>
           {(formError || error) && <div className="notice error" style={{ marginTop: 14, maxWidth: 980 }}>{formError || error}</div>}
+          {!modelReady && <div className="notice error" style={{ marginTop: 14, maxWidth: 980 }}>No language model is reachable, so servers cannot be checked. Check the backend's OpenRouter settings.</div>}
           <Steps step={step} />
         </div>
       </section>
