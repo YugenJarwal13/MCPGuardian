@@ -234,9 +234,11 @@ export default function PipelineScene({ events, serverName, notRun = [] }) {
 
         {/* verdict stamp */}
         {decisionLabel && !inspectOnly && (
-          <g className={`stamp-final ${allowed ? "ok" : "bad"}`} transform={`translate(${ST.enforcement.x} ${BOT}) rotate(-9)`}>
-            <rect x="-62" y="-20" width="124" height="40" rx="8" />
-            <text y="8" textAnchor="middle">{decisionLabel}</text>
+          <g transform={`translate(${ST.enforcement.x} ${BOT}) rotate(-9)`}>
+            <g className={`stamp-final ${allowed ? "ok" : "bad"}`}>
+              <rect x="-62" y="-20" width="124" height="40" rx="8" />
+              <text y="8" textAnchor="middle">{decisionLabel}</text>
+            </g>
           </g>
         )}
 
