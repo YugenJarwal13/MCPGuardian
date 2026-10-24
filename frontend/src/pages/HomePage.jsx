@@ -340,6 +340,26 @@ export default function HomePage({ section }) {
         </div>
       </section>
 
+      {/* --------------------------------------------------- audit & security */}
+      <section className="section" id="audit">
+        <div className="wrap">
+          <Reveal>
+            <div className="eyebrow">Built to be audited</div>
+            <h2 className="h-lg wide">Every decision leaves a trail.</h2>
+            <p className="lead">A security tool you can't inspect is just another thing to trust. Guardian records what it did and why, and protects itself while doing it.</p>
+          </Reveal>
+          <div className="cards c3">
+            {[
+              [Eye, "Traced end to end", "Each run is one OpenTelemetry trace: a span per stage and a span per model call with model, tokens, latency and cache hit. Traces are written to a local file and can be sent to Langfuse. The trace id is shown in the live console."],
+              [Layers, "Callbacks everywhere", "CrewAI step and task callbacks and Google ADK agent, model and tool callbacks write intermediate outputs and errors into the audit trail, so a failure can be debugged after the fact."],
+              [Shield, "Guarded itself", "Tool arguments and server addresses go through an input guard. On the public site, internal addresses are refused, visitors are rate-limited, and the shared AI budget degrades to regex rules instead of failing."],
+            ].map(([Ic, t, p], i) => (
+              <Reveal key={t} d={i} className="fcard"><div className="ic"><Ic /></div><h3>{t}</h3><p>{p}</p></Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ------------------------------------------------------------------ cta */}
       <section className="section">
         <div className="wrap">

@@ -23,15 +23,16 @@ reported as LLM numbers by accident.
 from __future__ import annotations
 
 import concurrent.futures
+import contextvars
 import logging
 import os
 import time
 
 # CrewAI phones home with anonymous telemetry by default; this gateway inspects
-# potentially sensitive tool text, so keep it off.
+# potentially sensitive tool text, so keep it off. (OTEL_SDK_DISABLED is deliberately NOT set:
+# our own OpenTelemetry tracing in src/observability.py must keep working.)
 os.environ.setdefault("CREWAI_DISABLE_TELEMETRY", "true")
 os.environ.setdefault("CREWAI_DISABLE_TRACKING", "true")
-os.environ.setdefault("OTEL_SDK_DISABLED", "true")
 
 from src.crewai_layer.heuristics import runtime_heuristic, static_heuristic
 from src.crewai_layer.schemas import InspectionVerdict
@@ -132,7 +133,8 @@ def _kickoff_with_timeout(kind: str, agent, task_builder, *args):
     """Run ``_kickoff`` with the configured wall-clock budget. Returns
     ``((verdict_or_None, meta), timed_out)``; exceptions propagate to the caller."""
     seconds = _timeout_s(kind)
-    future = _POOL.submit(_kickoff, agent, task_builder, *args)
+    ctx = contextvars.copy_context()      # keep the active trace span across the worker thread
+    future = _POOL.submit(ctx.run, _kickoff, agent, task_builder, *args)
     try:
         return future.result(timeout=seconds), False
     except concurrent.futures.TimeoutError:
@@ -158,7 +160,11 @@ def _kickoff(agent, task_builder, *args) -> tuple[InspectionVerdict | None, dict
     agent = agent.model_copy(update={"llm": llm, "verbose": False, "max_iter": 3,
                                           "max_retry_limit": 0})
     task = task_builder(agent, *args)
-    result = Crew(agents=[agent], tasks=[task]).kickoff()
+    from src.monitoring import crew_step_callback, crew_task_callback
+
+    role = getattr(agent, "role", "agent")
+    result = Crew(agents=[agent], tasks=[task], step_callback=crew_step_callback(role),
+                  task_callback=crew_task_callback(role)).kickoff()
     verdict = getattr(result, "pydantic", None)
     if uses_chain():
         from src.crewai_layer.chain_llm import pop_meta
@@ -182,6 +188,9 @@ def _analyze(kind: str, heuristic_call, agent_import, task_builder_import, args:
         (verdict, meta), timed_out = _kickoff_with_timeout(kind, agent, builder, *args)
     except Exception as exc:  # network/provider errors must not crash the gateway
         log.warning("%s LLM path failed: %s", kind, exc)
+        from src.monitoring import record_error
+
+        record_error("crewai", kind, exc)
         verdict, timed_out, meta = None, False, {"error": f"{type(exc).__name__}: {str(exc)[:200]}"}
     if timed_out:
         return _timeout_verdict(kind, _timeout_s(kind)), ENGINE_TIMEOUT, {"error": "timeout"}

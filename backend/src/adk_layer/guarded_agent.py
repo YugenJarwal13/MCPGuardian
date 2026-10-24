@@ -13,6 +13,7 @@ from typing import Any, Optional
 from google.adk.agents import LlmAgent
 
 from src.adk_layer.adk_runtime import adk_model
+from src.monitoring import ADK_MONITORING, ADK_TOOL_MONITORING
 
 
 def build_guarded_adk_agent(
@@ -27,4 +28,5 @@ def build_guarded_adk_agent(
         instruction=instruction,
         tools=tools,
         before_tool_callback=interceptor.adk_before_tool_callback(),
+        **ADK_MONITORING, **ADK_TOOL_MONITORING,
     )

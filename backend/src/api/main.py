@@ -21,10 +21,12 @@ from src.api import runner, servers
 from src.api.events import STAGES
 from src.config import REPO_ROOT, resolve_path
 from src.crewai_layer.crew import llm_available
+from src.observability import init_tracing
 
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
+    init_tracing()
     db = resolve_path("fingerprint_db").with_name("cases.db")
     manager = PipelineManager(db_path=str(db))
     async with serve_in_background(manager) as a2a_url:
@@ -59,8 +61,14 @@ def health() -> dict:
     if uses_chain():
         llm["chain"] = get_chain().describe()
         llm["events"] = get_chain().events[-5:]
+    from src.observability import langfuse_configured
+    from src.security.public_mode import limiter, public_mode
+
+    pub = public_mode()
     return {"ok": True, "llm_available": available, "llm": llm, "a2a_url": app.state.a2a_url,
-            "stages": STAGES}
+            "stages": STAGES, "public_mode": pub,
+            "llm_runs_left_today": limiter().llm_runs_left() if pub else None,
+            "tracing": {"file": True, "langfuse": langfuse_configured()}}
 
 
 @app.post("/servers/{server_id}/reset")

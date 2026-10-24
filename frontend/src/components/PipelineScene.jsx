@@ -170,6 +170,9 @@ export default function PipelineScene({ events, serverName, notRun = [] }) {
     const bad = all.filter((t) => t.verdict !== "clean").length;
     fold.static_check = { ...fold.static_check, status: bad ? "flagged" : "passed",
       word: bad ? `${bad} of ${all.length} flagged` : `all ${all.length} clean` };
+    for (const id of ["tool_call", "runtime_check", "behavioral_check", "a2a_hop", "enforcement"]) {
+      if (fold[id].status === "pending") fold[id] = { ...fold[id], status: "skipped" };
+    }
   }
   const done = events.find((e) => e.stage === "done") ? [...events].reverse().find((e) => e.stage === "done") : null;
   const final = done?.detail?.final_decision;

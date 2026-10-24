@@ -159,6 +159,32 @@ In-process fixture servers (clean reference, tricky-but-clean data, offline atta
 without the lab. Every streamed event is also written to `backend/logs/audit_trail.jsonl` (layer
 `pipeline_event`), so the Streamlit dashboard shows the same runs.
 
+## Observability, security and deployment
+
+* **Tracing.** Every run is one OpenTelemetry trace (a span per stage and per model call), always written to
+  `backend/logs/traces.jsonl`. To also send traces to [Langfuse](https://langfuse.com) (free cloud or self-hosted)
+  set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` and optionally `LANGFUSE_HOST`; any other OTLP backend works via
+  `OTEL_EXPORTER_OTLP_ENDPOINT`. The trace id is shown in the live console and stored in the audit trail.
+* **Callbacks.** CrewAI step/task callbacks and ADK agent/model/tool callbacks log intermediate outputs and errors
+  (`backend/src/monitoring.py`).
+* **Input guard and public mode.** Tool arguments and URLs are validated before any work starts. With
+  `GUARDIAN_PUBLIC=1` (set in the Dockerfile) internal addresses are refused, runs are rate-limited
+  (`GUARDIAN_RUNS_PER_HOUR`, `GUARDIAN_CONCURRENT_RUNS`), the AI-inspector budget is capped
+  (`GUARDIAN_LLM_RUNS_PER_DAY`, then regex rules take over and say so), and dangerous DVMCP challenges (3-10) are
+  inspect-only.
+* **Cost and time.** [`docs/cost_and_runtime.md`](docs/cost_and_runtime.md). **Requirements map:**
+  [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md).
+* **Deploy to a free Hugging Face Space (Docker).** Create a Space (SDK: Docker, blank), then from the repo root:
+
+  ```bash
+  bash deploy/push_to_hf.sh https://huggingface.co/spaces/<your-username>/<space-name>
+  ```
+
+  Git asks for your username and a **write** access token as the password. In the Space's *Settings -> Variables and
+  secrets* add `OPENROUTER_API_KEY` as a **secret** (and optionally the `LANGFUSE_*` keys). The image bundles the web
+  app, the API and the DVMCP lab; the model is called over OpenRouter. CI (`.github/workflows/ci.yml`) runs the
+  backend tests and the frontend build on every push.
+
 ## LLM configuration
 
 `.env` (git-ignored) selects the model behind the CrewAI agents (and the ADK anomaly judge):

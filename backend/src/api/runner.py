@@ -27,9 +27,12 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from src.adk_layer.callbacks.enforcement_callbacks import GuardianDecision
 from src.adk_layer.state.tool_fingerprint_store import ToolFingerprintStore
 from src.api.events import EventEmitter
+from src.audit import log_decision
 from src.api.servers import CustomServerError, custom_spec, default_args_from_schema, get_spec, open_session
 from src.crewai_layer.crew import llm_available
 from src.evaluation.ablation_config import AblationConfig
+from src.security.input_guard import check_arguments, check_url
+from src.security.public_mode import check_public_target, limiter, public_mode, restrict_execution
 from src.mcp_gateway.interceptor import (
     GuardianInterceptor,
     _iter_tools,
@@ -98,6 +101,7 @@ class _Run:
             self.server_id = req["server_id"]
             self.spec = get_spec(self.server_id)
         self.inspect_only = bool(req.get("inspect_only"))
+        self.budget_note: str | None = None      # set by ws_run when the day's AI-inspector budget is spent
         self.a2a = a2a_client
         self.em = EventEmitter(uuid.uuid4().hex[:12], self._send, self.server_id)
 
@@ -122,6 +126,7 @@ class _Run:
         if use_llm and not llm_available():
             use_llm = False
             llm_note = "LLM requested but no provider is configured — heuristic detectors used."
+        llm_note = llm_note or self.budget_note
 
         # The pre-call gate's escalation asks the human over this WebSocket.
         async def human(tool_name: str) -> bool:
@@ -329,13 +334,66 @@ class _Run:
             await session_cm.__aexit__(None, None, None)
 
 
+def _client_ip(ws: WebSocket) -> str:
+    fwd = ws.headers.get("x-forwarded-for")
+    return (fwd.split(",")[0].strip() if fwd else (ws.client.host if ws.client else "unknown"))
+
+
+async def _reject(ws: WebSocket, message: str, category: str, client: str) -> None:
+    """Refuse a request before any pipeline work, in the same event shape the UI already renders."""
+    log_decision({"layer": "input_guard", "client": client, "category": category, "message": message})
+    base = {"engine": "none", "elapsed_ms": 0, "detail": {"guard": category}}
+    await ws.send_json({"stage": "connect", "status": "error", "message": message, **base})
+    await ws.send_json({"stage": "done", "status": "error", "message": "Run refused.", **base})
+
+
+async def _admit(ws: WebSocket, req: dict, client: str) -> tuple[bool, str | None]:
+    """Input guard + (in public mode) rate limits and SSRF protection.
+    Returns ``(admitted, budget_note)``; when not admitted the refusal has already been sent."""
+    res = check_arguments(req.get("arguments"))
+    if not res.ok:
+        await _reject(ws, f"Input rejected by the input guard: {res.reason}.", res.category, client)
+        return False, None
+    if req.get("server_url"):
+        res = check_url(req["server_url"])
+        if not res.ok:
+            await _reject(ws, f"Input rejected by the input guard: {res.reason}.", res.category, client)
+            return False, None
+    if not public_mode():
+        return True, None
+    if req.get("server_url"):
+        err = await asyncio.to_thread(check_public_target, req["server_url"])
+        if err:
+            await _reject(ws, err, "ssrf", client)
+            return False, None
+    err = limiter().acquire(client)
+    if err:
+        await _reject(ws, err, "rate_limit", client)
+        return False, None
+    note = restrict_execution(req)
+    if req.get("use_llm") and not limiter().take_llm_run():
+        req["use_llm"] = False
+        budget = "Today's budget of AI-inspector runs on this public site is used up, so the regex rules were used instead."
+        note = f"{note} {budget}" if note else budget
+    return True, note
+
+
 @router.websocket("/ws/run")
 async def ws_run(ws: WebSocket) -> None:
     await ws.accept()
+    client, acquired = _client_ip(ws), False
     try:
         req = await ws.receive_json()
+        if not isinstance(req, dict):
+            await _reject(ws, "Malformed request.", "shape", client)
+            return
+        admitted, budget_note = await _admit(ws, req, client)
+        if not admitted:
+            return
+        acquired = public_mode()
         try:
             run = _Run(ws, req, ws.app.state.a2a_client)
+            run.budget_note = budget_note
         except KeyError:
             await ws.send_json({"stage": "done", "status": "error",
                                 "message": f"Unknown server '{req.get('server_id')}'"})
@@ -355,6 +413,13 @@ async def ws_run(ws: WebSocket) -> None:
     except WebSocketDisconnect:
         return
     finally:
+        if acquired:
+            limiter().release(client)
+        try:
+            if "run" in locals():
+                run.em.finish()
+        except Exception:      # noqa: BLE001
+            pass
         try:
             await ws.close()
         except RuntimeError:

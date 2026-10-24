@@ -1,0 +1,15 @@
+.git
+.github
+.venv
+**/__pycache__
+**/*.pyc
+.env
+frontend/node_modules
+frontend/dist
+backend/external
+backend/logs
+backend/src/evaluation/reports
+backend/tests
+docs
+*.md
+!deploy/hf/README.md

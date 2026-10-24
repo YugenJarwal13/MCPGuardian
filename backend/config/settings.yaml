@@ -30,5 +30,6 @@ dvmcp:
 
 paths:
   audit_trail: logs/audit_trail.jsonl
+  traces: logs/traces.jsonl
   fingerprint_db: logs/fingerprints.db
   reports_dir: src/evaluation/reports

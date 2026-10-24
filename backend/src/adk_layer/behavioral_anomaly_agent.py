@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 from src.adk_layer.state.session_schema import ToolFingerprint
 from src.config import settings
+from src.monitoring import ADK_MONITORING
 
 
 def _thresholds() -> tuple[float, int]:
@@ -110,6 +111,7 @@ def build_adk_anomaly_agent(model=None):
         description="Judges whether statistical tool-behaviour drift is a rug pull.",
         instruction=ANOMALY_INSTRUCTION,
         output_schema=RugPullJudgement,
+        **ADK_MONITORING,        # callbacks: agent/model start-finish, outputs and errors -> audit trail + trace
     )
 
 

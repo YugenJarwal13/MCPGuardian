@@ -8,6 +8,11 @@ const EXAMPLES = [
   ["DVMCP challenge 6", "http://127.0.0.1:9006/sse"],
   ["DVMCP challenge 10", "http://127.0.0.1:9010/sse"],
 ];
+const PUBLIC_EXAMPLES = [
+  ["DeepWiki", "https://mcp.deepwiki.com/mcp"],
+  ["Microsoft Learn", "https://learn.microsoft.com/api/mcp"],
+  ["GitMCP (any repo)", "https://gitmcp.io/modelcontextprotocol/servers"],
+];
 const NOT_RUN_WHEN_INSPECTING = ["tool_call", "runtime_check", "behavioral_check", "a2a_hop", "enforcement"];
 const clip = (s, n) => (s && s.length > n ? `${s.slice(0, n - 1)}…` : s || "");
 
@@ -108,8 +113,8 @@ export default function TestLivePage({ health }) {
             </button>
           </div>
           <div className="row" style={{ marginTop: 14, maxWidth: 980 }}>
-            <span className="muted" style={{ fontSize: "var(--fs-sm)" }}>Try a DVMCP server (start the lab first):</span>
-            {EXAMPLES.map(([l, u]) => (
+            <span className="muted" style={{ fontSize: "var(--fs-sm)" }}>{health?.public_mode ? "Try a public MCP server:" : "Try a public server or a DVMCP one (start the lab first):"}</span>
+            {[...PUBLIC_EXAMPLES, ...(health?.public_mode ? [] : EXAMPLES)].map(([l, u]) => (
               <button key={u} type="button" className="pick-chip" onClick={() => setUrl(u)} disabled={running}>{l}</button>
             ))}
             <label className="switch" style={{ marginLeft: "auto" }} title={health?.llm?.available ? "" : "No model configured: regex rules will be used"}>
@@ -130,7 +135,9 @@ export default function TestLivePage({ health }) {
               {[
                 ["What it checks", "Every tool’s name, description and parameters, for hidden orders aimed at the AI. If you then call a tool, also its reply and its behaviour over time."],
                 ["What it doesn’t do", "It is not a full security audit. A clean scan means no hidden instructions were found in the text; it can’t see bugs inside the server’s own code."],
-                ["Safe by default", "Only http(s) addresses are accepted. Credentials in URLs and cloud-metadata addresses are refused. No tool is called unless you choose to."],
+                ["Safe by default", health?.public_mode
+                  ? "Only public http(s) addresses are accepted; local and internal ones are refused. Runs are rate-limited, and the AI-inspector budget is shared and resets daily. No tool is called unless you choose to."
+                  : "Only http(s) addresses are accepted. Credentials in URLs and cloud-metadata addresses are refused. No tool is called unless you choose to."],
               ].map(([t, p]) => (
                 <div key={t} className="fcard"><h3 style={{ fontSize: "1.1rem" }}>{t}</h3><p style={{ fontSize: "0.95rem" }}>{p}</p></div>
               ))}

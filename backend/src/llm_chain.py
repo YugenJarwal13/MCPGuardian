@@ -286,7 +286,34 @@ class ChainLLM:
 
     # -- public ----------------------------------------------------------------
     def complete(self, system: str, user: str, extra_key: str = "") -> tuple[dict, dict]:
-        """Return ``(verdict_dict, meta)``. Raises ChainError when nothing answers."""
+        """Return ``(verdict_dict, meta)``. Raises ChainError when nothing answers. Each call is one
+        ``llm.complete`` trace span (model, tokens, latency, cache hit, slots tried)."""
+        from src.observability import clip, tracer
+
+        with tracer().start_as_current_span("llm.complete") as span:
+            span.set_attribute("input.value", clip(user, 600))
+            try:
+                verdict, meta = self._complete(system, user, extra_key)
+            except Exception as exc:
+                span.record_exception(exc)
+                span.set_attribute("guardian.llm_error", clip(str(exc), 400))
+                raise
+            span.set_attribute("gen_ai.system", meta.get("provider") or "")
+            span.set_attribute("gen_ai.request.model", meta.get("model") or "")
+            span.set_attribute("guardian.method", meta.get("method") or "")
+            span.set_attribute("guardian.cached", bool(meta.get("cached")))
+            if meta.get("latency_ms") is not None:
+                span.set_attribute("guardian.model_latency_ms", meta["latency_ms"])
+            tokens = meta.get("tokens") or {}
+            if tokens.get("prompt") is not None:
+                span.set_attribute("gen_ai.usage.input_tokens", tokens["prompt"])
+            if tokens.get("completion") is not None:
+                span.set_attribute("gen_ai.usage.output_tokens", tokens["completion"])
+            span.set_attribute("guardian.slots_tried", clip(meta.get("slots_tried") or []))
+            span.set_attribute("output.value", clip(verdict))
+            return verdict, meta
+
+    def _complete(self, system: str, user: str, extra_key: str = "") -> tuple[dict, dict]:
         key = hashlib.sha256(json.dumps([system, user, extra_key, self.chain_id]).encode()).hexdigest()
         if self._cache is not None:
             hit = self._cache.get(key)
