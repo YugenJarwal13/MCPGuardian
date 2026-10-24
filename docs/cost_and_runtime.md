@@ -54,15 +54,15 @@ For a server with *n* tools and a call that executes, the pipeline makes *n* sta
 
 Tokens per live run are about (n + 1) x 1,800 (dots-3). "Check a server" (inspection only) makes *n* calls.
 
-## 4. Running the public site on free tiers
+## 4. Running a public site on free tiers
 
 | Resource | Limit | How the app copes |
 |---|---|---|
 | OpenRouter free models | about 50 requests/day, resets 00:00 UTC | `GUARDIAN_LLM_RUNS_PER_DAY` (default 10) caps AI-inspector runs per day; after that runs continue on regex rules and say so |
-| Hugging Face Space (free CPU) | 2 vCPU, 16 GB RAM, sleeps when idle | the model is not hosted there, only called over the API; first request after sleep takes a minute |
+| Free container hosts (e.g. Cloud Run free tier, Render free) | small CPU/RAM, may sleep when idle | the model is not hosted there, only called over the API; first request after sleep takes about a minute |
 | Abuse | anyone can open the page | per-visitor rate limit (12 runs/hour) and 2 concurrent runs; internal addresses refused |
 
-Total running cost of the deployed demo: **$0**.
+Expected running cost of a deployed demo within free tiers: **$0** (not yet deployed).
 
 ## 5. What these numbers do not cover
 

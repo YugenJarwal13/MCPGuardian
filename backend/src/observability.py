@@ -7,7 +7,7 @@ slots tried). Spans are always written to ``logs/traces.jsonl`` so a run can be 
 offline; when Langfuse keys are present they are also exported to Langfuse over OTLP:
 
     LANGFUSE_PUBLIC_KEY=pk-lf-...   LANGFUSE_SECRET_KEY=sk-lf-...
-    LANGFUSE_HOST=https://cloud.langfuse.com        # default; use your self-hosted URL otherwise
+    LANGFUSE_HOST=https://cloud.langfuse.com        # EU cloud (default); US: https://us.cloud.langfuse.com; or your own URL
 
 Any other OTLP backend works through the standard ``OTEL_EXPORTER_OTLP_ENDPOINT`` variable.
 Google ADK emits its own spans into the same provider. Text is truncated before it is attached;
@@ -85,7 +85,8 @@ def _remote_exporter() -> Optional[SpanExporter]:
         token = base64.b64encode(
             f"{os.environ['LANGFUSE_PUBLIC_KEY']}:{os.environ['LANGFUSE_SECRET_KEY']}".encode()).decode()
         return OTLPSpanExporter(endpoint=f"{host}/api/public/otel/v1/traces",
-                                headers={"Authorization": f"Basic {token}"})
+                                headers={"Authorization": f"Basic {token}",
+                                         "x-langfuse-ingestion-version": "4"})   # without it traces show up ~10 min late
     if os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"):
         return OTLPSpanExporter()
     return None

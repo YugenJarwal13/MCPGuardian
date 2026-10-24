@@ -1,5 +1,5 @@
 # MCP Guardian: one container serving the web app, the API and the DVMCP demo lab.
-# Built for a free Hugging Face Space (Docker SDK, port 7860), but runs anywhere:
+# Runs on any container host (Cloud Run, Render, Kubernetes, a VM); listens on $PORT (default 7860):
 #   docker build -t mcp-guardian .
 #   docker run -p 7860:7860 -e OPENROUTER_API_KEY=... mcp-guardian
 

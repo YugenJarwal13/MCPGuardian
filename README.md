@@ -174,16 +174,17 @@ without the lab. Every streamed event is also written to `backend/logs/audit_tra
   inspect-only.
 * **Cost and time.** [`docs/cost_and_runtime.md`](docs/cost_and_runtime.md). **Requirements map:**
   [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md).
-* **Deploy to a free Hugging Face Space (Docker).** Create a Space (SDK: Docker, blank), then from the repo root:
+* **Deploy.** The repo ships a `Dockerfile` (web app + API + DVMCP lab in one container, listens on `$PORT`, default
+  7860) and a CI workflow (`.github/workflows/ci.yml`: backend tests and frontend build on every push). Secrets are
+  environment variables: `OPENROUTER_API_KEY` (required for the AI inspectors) and optionally `LANGFUSE_*`.
 
   ```bash
-  bash deploy/push_to_hf.sh https://huggingface.co/spaces/<your-username>/<space-name>
+  docker build -t mcp-guardian .
+  docker run -p 7860:7860 -e OPENROUTER_API_KEY=... mcp-guardian      # then open http://localhost:7860
   ```
 
-  Git asks for your username and a **write** access token as the password. In the Space's *Settings -> Variables and
-  secrets* add `OPENROUTER_API_KEY` as a **secret** (and optionally the `LANGFUSE_*` keys). The image bundles the web
-  app, the API and the DVMCP lab; the model is called over OpenRouter. CI (`.github/workflows/ci.yml`) runs the
-  backend tests and the frontend build on every push.
+  Any container host works (Google Cloud Run, Render, a Kubernetes cluster, a VM). Note: **Hugging Face Docker Spaces
+  need a paid plan**; `deploy/push_to_hf.sh` is kept for accounts that have one.
 
 ## LLM configuration
 
