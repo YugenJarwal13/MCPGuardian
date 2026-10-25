@@ -1,4 +1,5 @@
 import ConsolePanel from "./ConsolePanel.jsx";
+import DriftPanel from "./DriftPanel.jsx";
 import { Alert } from "./Icons.jsx";
 import PipelineScene, { SceneNarration } from "./PipelineScene.jsx";
 import PipelineView, { foldEvents } from "./PipelineView.jsx";
@@ -30,6 +31,21 @@ function Compare({ fold, done }) {
   const tc = fold.tool_call;
   const d = done.detail || {};
   if (d.inspect_only) return null;
+  const change = st.detail.definition_change;
+  if (change) {
+    return (
+      <div className="compare">
+        <div className="cmp with">
+          <h4>When Guardian first saw this tool</h4>
+          <pre>{change.first_seen}</pre>
+        </div>
+        <div className="cmp without">
+          <h4>What the tool says now</h4>
+          <pre><Highlighted text={change.now} phrases={st.detail.flagged_phrases || []} /></pre>
+        </div>
+      </div>
+    );
+  }
   const staticBad = ["flagged", "blocked"].includes(st.status);
   const runtimeBad = rt.status === "flagged";
   if (!staticBad && !runtimeBad) return null;
@@ -68,6 +84,9 @@ export default function RunView({ events, running, onApprove, serverName, notRun
         <ConsolePanel events={events} running={running} />
       </div>
       {done && showCompare && <Compare fold={fold} done={done} />}
+      {fold.behavioral_check.detail?.history && !fold.behavioral_check.detail?.skipped && (
+        <DriftPanel detail={fold.behavioral_check.detail} flagged={fold.behavioral_check.status === "flagged"} />
+      )}
       <details className="under-hood">
         <summary>Under the hood: every stage in detail</summary>
         <div><PipelineView events={events} onApprove={onApprove} notRun={notRun} /></div>

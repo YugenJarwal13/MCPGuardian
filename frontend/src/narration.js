@@ -56,6 +56,9 @@ export function narrate(fold, last) {
         `The server handed over its tool descriptions${d.tools?.length ? `: ${d.tools.slice(0, 5).join(", ")}${d.tools.length > 5 ? "…" : ""}` : ""}. Before the agent is allowed to read any of them, Guardian reads them first.`, "ok");
     case "static_check":
       if (st === "started") return mk("Inspector 1 reads the fine print", `A CrewAI agent, the “MCP Tool Metadata Auditor”, reads each description like a security reviewer. It is looking for hidden orders aimed at the AI instead of at a human reader. ${last.message}`);
+      if (st === "flagged" && d.definition_change) {
+        return mk("Rug pull: the tool's definition changed", `“${tool}” does not describe itself the way it did when Guardian first saw it. Tools are often trusted once and then quietly rewritten, so every description is compared with the first one seen. ${d.verdict !== "clean" ? `The new text was also judged ${d.verdict} (${pct(d.confidence)} confident). ` : ""}A human has to approve it.`, "bad");
+      }
       if (st === "flagged") {
         const ph = d.flagged_phrases || [];
         return mk("Hidden instructions found", `The auditor (${engineWord(last) || "static analysis"}) marked “${tool}” as ${d.verdict}, ${pct(d.confidence)} confident. ${d.reasoning || ""}${ph.length ? ` It points at ${q(ph[0], 70)}.` : ""}`, "bad");
@@ -73,7 +76,10 @@ export function narrate(fold, last) {
       return mk("The answer is ordinary data", d.reasoning ? `${q(d.reasoning, 200)}` : "No injected instruction found in the response.", "ok");
     case "behavioral_check":
       if (st === "started") return mk("Is this tool acting differently?", "Google ADK keeps a statistical fingerprint of how each tool normally behaves: how long its answers are, which fields it returns. A tool that earns trust and then changes (a “rug pull”) shows up as drift.");
-      if (st === "flagged") return mk("This tool changed its behaviour", last.message, "bad");
+      if (st === "flagged") {
+        const fresh = d.new_keys?.length ? ` Guardian had never seen the field “${d.new_keys.join("”, “")}” in this tool's responses before.` : "";
+        return mk("Rug pull: the tool changed its behaviour", `${last.message}${fresh}`, "bad");
+      }
       return mk("Behaves as usual", `${last.message}${d.z_score !== undefined ? ` (z-score ${d.z_score}, ${d.calls_observed} call${d.calls_observed === 1 ? "" : "s"} observed)` : ""}`, "ok");
     case "a2a_hop":
       if (st === "started") return mk("Reporting to the case manager", "The verdicts are packaged as an A2A (Agent-to-Agent) message and sent over the network to a separate Google ADK agent that keeps the case file.");

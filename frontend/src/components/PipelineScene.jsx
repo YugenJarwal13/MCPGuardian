@@ -181,8 +181,12 @@ export default function PipelineScene({ events, serverName, notRun = [] }) {
 
   const staticFlag = fold.static_check.status === "flagged";
   const runtimeFlag = fold.runtime_check.status === "flagged";
-  const danger = staticFlag || runtimeFlag || (inspectOnly && (done.detail.tools || []).some((t) => t.verdict !== "clean"));
+  const danger = staticFlag || runtimeFlag || fold.behavioral_check.status === "flagged" || (inspectOnly && (done.detail.tools || []).some((t) => t.verdict !== "clean"));
   const phrase = (runtimeFlag ? fold.runtime_check : fold.static_check).detail?.flagged_phrases?.[0];
+  const defChanged = !!fold.static_check.detail?.definition_change;
+  const newKeys = fold.behavioral_check.status === "flagged" ? fold.behavioral_check.detail?.new_keys || [] : [];
+  const rugLines = defChanged ? ["rug pull:", "description changed", "since first seen"]
+    : newKeys.length ? ["rug pull:", `new field “${newKeys[0]}”`, "never seen before"] : null;
   const decisionLabel = final === "allow" ? "ALLOW" : final === "escalate_approved" ? "ALLOWED" : final === "block" || final === "escalate_denied" ? "BLOCK" : null;
   const waitingAt = Object.entries(fold).find(([, s]) => s.status === "escalate")?.[0];
   const waitingHuman = !!waitingAt;
@@ -216,7 +220,8 @@ export default function PipelineScene({ events, serverName, notRun = [] }) {
         <ServerBox x={SV.x} y={SV.y} danger={danger} />
         <text className="lbl" x={SV.x} y={SV.y + 76} textAnchor="middle">{clip(serverName || "MCP server", 20)}</text>
         {agentSays && <Bubble x={8} y={96} w={148} lines={agentSays.lines} tone={agentSays.tone} />}
-        {danger && phrase && (
+        {rugLines && <Bubble x={992} y={64} w={162} lines={rugLines} tone="bad" />}
+        {!rugLines && danger && phrase && (
           <Bubble x={992} y={64} w={162} lines={["hidden in the text:", ...wrap(`“${phrase}”`, 24, 2)]} tone="bad" />
         )}
 

@@ -81,3 +81,16 @@ def test_a_run_that_needs_a_model_is_refused_when_none_is_reachable(client, monk
                         "arguments": {"expression": "2+2"}, "use_llm": True})
     assert [e["stage"] for e in evs] == ["connect", "done"]
     assert evs[0]["status"] == "error" and "language model" in evs[0]["message"]
+
+
+def test_the_behavioural_agent_remembers_the_previous_response_between_runs(client):
+    from src.api import runner
+
+    runner.reset_server_state("demo-rug-pull")
+    for _ in range(2):
+        evs = _run(client, {"server_id": "demo-rug-pull", "tool_name": "stock_price",
+                            "arguments": {"ticker": "ACME"}, "use_llm": False})
+    behavioural = next(e for e in evs if e["stage"] == "behavioral_check" and e["status"] != "started")
+    assert behavioural["detail"]["previous_response"]
+    assert [h["n"] for h in behavioural["detail"]["history"]] == [1, 2]
+    runner.reset_server_state("demo-rug-pull")

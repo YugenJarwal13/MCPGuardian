@@ -31,7 +31,8 @@ export default function DemoPage({ health }) {
   // Rug-pull fixture: it behaves for 10 calls and changes on call 11, so the page tracks the call count.
   const [calls, setCalls] = useState(0);
   const [ff, setFf] = useState(null);
-  const isRugPull = server?.attack_category === "rug_pull" && server?.calls_made !== undefined;
+  const flipsAfter = server?.flips_after;
+  const isRugPull = flipsAfter != null;
   const refreshCalls = useCallback(() => {
     if (!server) return;
     fetchServers().then((data) => {
@@ -49,7 +50,7 @@ export default function DemoPage({ health }) {
       setFormError("Arguments must be valid JSON.");
       return;
     }
-    const total = Math.max(0, 10 - calls);
+    const total = Math.max(0, flipsAfter - calls);
     reset();
     for (let i = 0; i < total; i += 1) {
       setFf({ done: i, total });
@@ -171,14 +172,14 @@ export default function DemoPage({ health }) {
                   </details>
                   {isRugPull && (
                     <div className="rug-note">
-                      <b>Rug pull:</b> this tool answers normally for its first 10 calls, then changes on call 11.
-                      Calls so far: <b className="num">{calls}</b>.
-                      {calls < 10 && (
+                      <b>Rug pull:</b> {server.rug_hint} Calls so far: <b className="num">{calls}</b>.
+                      {calls < flipsAfter && (
                         <button type="button" className="btn" onClick={fastForward} disabled={running || !!ff || !modelReady}>
-                          {ff ? <><span className="spinner" /> Calling {ff.done + 1}/{ff.total}</> : `Fast-forward to call 11 (${10 - calls} quiet calls)`}
+                          {ff ? <><span className="spinner" /> Calling {ff.done + 1}/{ff.total}</> : `Fast-forward to the change (${flipsAfter - calls} quiet calls)`}
                         </button>
                       )}
-                      {calls >= 10 && calls < 11 && <span> The next call is the one that changes.</span>}
+                      {calls === flipsAfter && <span> The next call is the one that changes.</span>}
+                      {calls > flipsAfter && <span> It has already changed; use Reset history to start over.</span>}
                     </div>
                   )}
                   <div className="row" style={{ marginTop: 16 }}>

@@ -26,6 +26,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from src.adk_layer.callbacks.enforcement_callbacks import GuardianDecision
 from src.adk_layer.state.tool_fingerprint_store import ToolFingerprintStore
+from src.adk_layer.behavioral_anomaly_agent import BehavioralAnomalyAgent
 from src.api.events import EventEmitter
 from src.audit import log_decision
 from src.api.servers import CustomServerError, custom_spec, default_args_from_schema, get_spec, open_session
@@ -54,8 +55,23 @@ def fingerprint_store(server_id: str) -> ToolFingerprintStore:
     return _STORES[server_id]
 
 
+# Response size and fields per call, per server and tool: the data behind the drift chart.
+_HISTORY: dict[str, list[dict]] = {}
+# One behavioural agent per server, so it remembers the previous response between runs.
+_AGENTS: dict[tuple[str, bool], BehavioralAnomalyAgent] = {}
+
+
+def anomaly_agent(server_id: str, use_llm: bool) -> BehavioralAnomalyAgent:
+    return _AGENTS.setdefault((server_id, use_llm), BehavioralAnomalyAgent(use_llm=use_llm))
+
+
 def reset_server_state(server_id: str) -> None:
     from src.api import servers
+
+    for key in [k for k in _HISTORY if k.startswith(f"{server_id}:")]:
+        _HISTORY.pop(key, None)
+    for key in [k for k in _AGENTS if k[0] == server_id]:
+        _AGENTS.pop(key, None)
 
     store = _STORES.pop(server_id, None)
     if store is not None:
@@ -134,7 +150,9 @@ class _Run:
         async def human(tool_name: str) -> bool:
             ok =await self._await_approval(
                 "tool_call", f"'{tool_name}' needs human approval before it may run.",
-                {"reason": "policy escalation before execution",
+                {"reason": ("this tool's definition changed since it was first seen"
+                            if tool_name in interceptor.definition_changes
+                            else "policy escalation before execution"),
                  "requested_scope": interceptor._scope.get(tool_name),
                  **({"static": _verdict_detail(interceptor._static[tool_name])}
                     if tool_name in interceptor._static else {})})
@@ -146,6 +164,7 @@ class _Run:
         interceptor = GuardianInterceptor(
             ablation=AblationConfig(), use_llm=use_llm,
             fingerprint_store=fingerprint_store(self.server_id),
+            anomaly_agent=anomaly_agent(self.server_id, use_llm),
             human_approval_callback=human, a2a_client=self.a2a)
 
         # 1. connect ---------------------------------------------------------
@@ -219,12 +238,15 @@ class _Run:
                           "engine": interceptor.engines.get(n, {}).get("static"),
                           "model": interceptor.models.get(n, {}).get("static", {}).get("model"),
                           "scope": interceptor._scope.get(n),
+                          "definition_changed": n in interceptor.definition_changes,
                           "default_args": default_args_from_schema(tools[n][2]),
                           "description": tools[n][1]} for n, v in interceptor._static.items()]
+            change = interceptor.definition_changes.get(tool)
             detail = _verdict_detail(sv, meta=s_meta, description=tools[tool][1],
                                      requested_scope=interceptor._scope.get(tool),
-                                     other_flagged_tools=others, all_tools=all_tools)
-            flagged_all = [t["name"] for t in all_tools if t["verdict"] != "clean"]
+                                     other_flagged_tools=others, all_tools=all_tools,
+                                     **({"definition_change": change} if change else {}))
+            flagged_all = [t["name"] for t in all_tools if t["verdict"] != "clean" or t["definition_changed"]]
             if self.inspect_only:
                 # inspection mode covers the whole server, so the stage result must say so
                 if flagged_all:
@@ -234,6 +256,10 @@ class _Run:
                 else:
                     await em.emit("static_check", "passed",
                                   f"All {len(all_tools)} tool descriptions look clean ✓", detail, s_engine, s_meta)
+            elif change:
+                await em.emit("static_check", "flagged",
+                              f"'{tool}' changed since it was first seen: rug pull on the tool definition!",
+                              detail, s_engine, s_meta)
             elif sv.verdict == "clean":
                 await em.emit("static_check", "passed", f"'{tool}' metadata looks clean ✓",
                               detail, s_engine, s_meta)
@@ -288,11 +314,15 @@ class _Run:
                 await em.emit("behavioral_check", "started",
                               "Updating the behavioural fingerprint (ADK anomaly agent)…")
                 report = await interceptor.inspect_response_behavioral(tool, text, keys)
+                history = _HISTORY.setdefault(f"{self.server_id}:{tool}", [])
+                history.append({"n": len(history) + 1, "length": len(text), "keys": sorted(keys)})
                 await em.emit(
                     "behavioral_check", "flagged" if report.is_anomalous else "passed",
                     report.explanation,
                     {**report.evidence, "statistical_anomaly": report.statistical_anomaly,
-                     "calls_observed": fingerprint_store(self.server_id).get(tool).n_samples},
+                     "calls_observed": fingerprint_store(self.server_id).get(tool).n_samples,
+                     "history": history[-14:], "response": _preview(text, 600),
+                     "previous_response": report.extra.get("previous_response", "")},
                     report.engine)
 
             # 7. a2a_hop -------------------------------------------------------

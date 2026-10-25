@@ -240,3 +240,20 @@
 .tcard .go { margin-top: 10px; font-size: var(--fs-xs); color: var(--accent-text); font-weight: 600; }
 .help-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
 @media (max-width: 800px) { .help-grid { grid-template-columns: 1fr; } }
+
+/* rug-pull drift panel */
+.drift { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-xl); padding: 24px 26px; box-shadow: var(--shadow-sm); }
+.drift-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.drift-head h3 { font-size: 1.3rem; }
+.drift .muted { margin-top: 6px; max-width: 70ch; }
+.drift-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; margin-top: 18px; align-items: start; }
+@media (max-width: 900px) { .drift-grid { grid-template-columns: 1fr; } }
+.drift-svg { width: 100%; height: auto; display: block; overflow: visible; }
+.drift-svg .bar-ok { fill: var(--accent-2); opacity: 0.8; }
+.drift-svg .bar-bad { fill: var(--block); }
+.drift-svg .bar-n { font: 500 10px var(--font-mono); fill: var(--text-3); }
+.drift-svg .bar-flag { font: 700 10px var(--font-mono); fill: var(--block-ink); }
+.drift-axis { text-align: center; color: var(--text-3); font-size: var(--fs-xs); margin-top: 2px; }
+.drift-diff .dlabel { margin: 10px 0 6px; }
+.drift-diff .dlabel:first-child { margin-top: 0; }
+.drift-diff pre.quote { max-height: 150px; }

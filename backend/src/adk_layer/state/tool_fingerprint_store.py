@@ -7,6 +7,7 @@ Monitoring/Observability module asks for).
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
@@ -40,6 +41,20 @@ class ToolFingerprintStore:
             (fingerprint.tool_id, fingerprint.model_dump_json()),
         )
         self._conn.commit()
+
+    def check_definition(self, tool_id: str, description: str, schema: dict) -> tuple[bool, str]:
+        """Compare a tool's current description + parameter schema with the first one seen.
+
+        Returns ``(changed, first_seen_description)``. The first sighting becomes the baseline and is kept:
+        a tool that stays changed keeps being reported until its history is reset."""
+        digest = hashlib.sha256(
+            json.dumps([description or "", schema or {}], sort_keys=True, default=str).encode()).hexdigest()
+        fp = self.get(tool_id)
+        if not fp.definition_hash:
+            fp.definition_hash, fp.definition_text = digest, (description or "")[:4000]
+            self.update(fp)
+            return False, ""
+        return fp.definition_hash != digest, fp.definition_text
 
     def all_ids(self) -> list[str]:
         return [r[0] for r in self._conn.execute("SELECT tool_id FROM fingerprints").fetchall()]

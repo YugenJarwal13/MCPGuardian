@@ -169,6 +169,7 @@ class BehavioralAnomalyAgent:
             explanation=self._explain(fp, is_anomalous, evidence),
             evidence=evidence,
             statistical_anomaly=is_anomalous,
+            extra={"previous_response": previous[:800]},
         )
         if is_anomalous and self._llm_enabled():
             judged = await self._judge(fp, evidence, previous, response_text)

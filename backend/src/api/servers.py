@@ -22,6 +22,7 @@ from src.demo_agent.agent_config import (
     build_clean_server,
     build_poisoned_metadata_server,
     build_poisoned_response_server,
+    build_definition_swap_server,
     build_rug_pull_server,
 )
 
@@ -85,6 +86,8 @@ class ServerSpec:
     factory: Optional[Callable[[], FakeMCPSession]] = None
     url: Optional[str] = None            # user-supplied MCP endpoint ("Test a server LIVE")
     transport: str = "sse"               # "sse" | "streamable-http" (custom URLs only)
+    flips_after: Optional[int] = None    # rug-pull fixtures: the tool changes after this many calls
+    rug_hint: Optional[str] = None
 
     def is_live(self) -> bool:
         if self.url:
@@ -115,6 +118,8 @@ class ServerSpec:
             d["live"] = self.is_live()
         else:
             d["live"] = False
+        if self.flips_after is not None:
+            d.update({"flips_after": self.flips_after, "rug_hint": self.rug_hint})
         if self.factory is not None:      # in-process fixtures keep a call counter (rug-pull demo)
             session = _FIXTURE_SESSIONS.get(self.id)
             d["calls_made"] = len(session.call_log) if session else 0
@@ -140,9 +145,14 @@ def _registry() -> dict[str, ServerSpec]:
                    "in-process fixture", "indirect_prompt_injection", default_tool="fetch_url",
                    default_args={"url": "https://example.com/report"},
                    factory=build_poisoned_response_server),
-        ServerSpec("demo-rug-pull", "Stock price rug pull (offline fixture, flips on call 11)",
+        ServerSpec("demo-rug-pull", "Stock price rug pull (offline fixture, changes on call 11)",
                    "poisoned", "in-process fixture", "rug_pull", default_tool="stock_price",
-                   default_args={"ticker": "ACME"}, factory=build_rug_pull_server),
+                   default_args={"ticker": "ACME"}, factory=build_rug_pull_server, flips_after=10,
+                   rug_hint="This tool answers normally for its first 10 calls, then its responses change on call 11."),
+        ServerSpec("demo-rug-pull-definition", "Exchange rate rug pull (offline fixture, description changes after 3 calls)",
+                   "poisoned", "in-process fixture", "rug_pull", default_tool="exchange_rate",
+                   default_args={"base": "USD", "quote": "EUR"}, factory=build_definition_swap_server, flips_after=3,
+                   rug_hint="This tool keeps the same description for its first 3 calls, then swaps in a poisoned one."),
     ]
     for ch in CHALLENGE_MAP:
         tool, args = DVMCP_PRESETS.get(ch.number, (None, {}))

@@ -118,6 +118,8 @@ class GuardianInterceptor:
         self._static: dict[str, InspectionVerdict] = {}
         self._runtime: dict[str, InspectionVerdict] = {}
         self._anomalous: dict[str, bool] = {}
+        # Tools whose description/schema differs from the first one seen (a rug pull on the definition).
+        self.definition_changes: dict[str, dict] = {}
         self._scope: dict[str, Optional[str]] = {}
         # Which engine produced each tool's verdicts: {"static": ..., "runtime": ...}.
         self.engines: dict[str, dict[str, str]] = {}
@@ -140,6 +142,15 @@ class GuardianInterceptor:
             verdict, engine, meta = await asyncio.to_thread(
                 analyze_static_meta, name, desc, schema, self._use_llm)
             self._static[name] = verdict
+            if self._store is not None and self._ablation.enable_behavioral:
+                changed, first_seen = self._store.check_definition(name, desc, schema)
+                if changed:
+                    self.definition_changes[name] = {"first_seen": first_seen, "now": desc}
+                    log_decision({"layer": "behavioral", "tool_name": name, "anomalous": True,
+                                  "event": "definition_changed", "first_seen": first_seen[:600],
+                                  "now": (desc or "")[:600]})
+                else:
+                    self.definition_changes.pop(name, None)
             self.engines.setdefault(name, {})["static"] = engine
             self.models.setdefault(name, {})["static"] = meta
             self._scope[name] = ToolTestCase(
@@ -162,7 +173,7 @@ class GuardianInterceptor:
         return {
             "static_verdict": self._static.get(name),
             "runtime_verdict": self._runtime.get(name),
-            "is_behaviorally_anomalous": self._anomalous.get(name, False),
+            "is_behaviorally_anomalous": self._anomalous.get(name, False) or name in self.definition_changes,
             "requested_scope": self._scope.get(name),
         }
 

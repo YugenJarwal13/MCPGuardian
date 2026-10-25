@@ -52,7 +52,7 @@ const KNOWN = new Set([
   "case_decision", "round_trip_ms", "inspector_latency_ms", "note", "tools", "selected", "source", "endpoint",
   "decision", "refusal", "reason", "static", "final_decision", "tool", "engines", "models", "anomalous",
   "approved_scope", "provider", "model", "method", "cached", "model_latency_ms", "models_tried", "all_tools",
-  "inspect_only", "hint",
+  "inspect_only", "hint", "history", "previous_response", "definition_change",
 ]);
 
 function Detail({ stage, detail, message }) {
@@ -111,6 +111,14 @@ function Detail({ stage, detail, message }) {
       {detail.requested_scope && <Row label="Sensitive scope (from schema)">{detail.requested_scope}</Row>}
       {detail.approved_scope && <Row label="Approved scope">{detail.approved_scope}</Row>}
       {detail.other_flagged_tools?.length > 0 && <Row label="Other flagged tools">{detail.other_flagged_tools.join(", ")}</Row>}
+      {detail.definition_change && (
+        <Row label="Definition changed">
+          <p className="reasoning">Compared with the description Guardian saw the first time:</p>
+          <pre className="quote">{detail.definition_change.first_seen}</pre>
+          <p className="reasoning" style={{ marginTop: 8 }}>Now:</p>
+          <pre className="quote"><Highlighted text={detail.definition_change.now} phrases={phrases} /></pre>
+        </Row>
+      )}
       {detail.provider && (
         <Row label="Answered by">
           {detail.provider} · <code>{detail.model}</code>{detail.method && <> · {detail.method}</>}

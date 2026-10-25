@@ -16,3 +16,5 @@ class ToolFingerprint(BaseModel):
     m2_length: float = 0.0                    # Welford's M2 for online variance
     known_response_keys: set[str] = Field(default_factory=set)  # JSON keys ever seen
     mean_latency_ms: float = 0.0
+    definition_hash: str = ""               # sha256 of the description + schema when first seen
+    definition_text: str = ""               # that first-seen description (shown when it later changes)
