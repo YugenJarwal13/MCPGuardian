@@ -116,13 +116,19 @@ def build_adk_anomaly_agent(model=None):
 
 
 def _parse_judgement(text: str) -> RugPullJudgement | None:
+    """The verdict is the last JSON object in the reply that fits the schema. Some models think
+    out loud first (and may quote JSON while doing so), so a plain ``json.loads`` is not enough."""
     text = (text or "").strip()
-    if text.startswith("```"):
-        text = text.strip("`").removeprefix("json").strip()
-    try:
-        return RugPullJudgement(**json.loads(text))
-    except Exception:
-        return None
+    decoder, found = json.JSONDecoder(), None
+    for i, ch in enumerate(text):
+        if ch != "{":
+            continue
+        try:
+            obj, _ = decoder.raw_decode(text[i:])
+            found = RugPullJudgement(**obj)
+        except Exception:
+            continue
+    return found
 
 
 class BehavioralAnomalyAgent:
@@ -186,8 +192,6 @@ class BehavioralAnomalyAgent:
     async def _judge(self, fp, evidence, previous: str, current: str) -> RugPullJudgement | None:
         from src.adk_layer.adk_runtime import run_agent_once
 
-        if self._agent is None:
-            self._agent = build_adk_anomaly_agent(self._model)
         prompt = (
             f"Tool: {fp.tool_id}\nCalls observed: {fp.n_samples}\n"
             f"Statistical evidence: {json.dumps(evidence)}\n\n"
@@ -195,8 +199,11 @@ class BehavioralAnomalyAgent:
         )
         budget = float(settings().get("timeouts", {}).get("runtime_inspection_s", 30))
         try:
-            # On timeout/failure the statistical decision stands (an anomaly then
-            # still escalates), so a hung judge can never turn a flag into an allow.
+            # Building the agent can fail too (e.g. the model wrapper is not installed), so it
+            # is inside the try. On timeout/failure the statistical decision stands (an anomaly
+            # then still escalates), so a broken judge can never turn a flag into an allow.
+            if self._agent is None:
+                self._agent = build_adk_anomaly_agent(self._model)
             return _parse_judgement(
                 await asyncio.wait_for(run_agent_once(self._agent, prompt), budget))
         except Exception:

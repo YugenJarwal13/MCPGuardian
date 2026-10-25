@@ -198,7 +198,15 @@ class _Run:
             async def static_progress(i: int, n: int, name: str, phase: str) -> None:
                 if phase == "start" and n > 1:
                     await em.emit("static_check", "started",
-                                  f"Static analysis (CrewAI) {i}/{n} — inspecting '{name}'…")
+                                  f"Static analysis (CrewAI) {i}/{n} - inspecting '{name}'…")
+                elif phase == "done" and n > 1:
+                    v = interceptor._static[name]
+                    meta = interceptor.models.get(name, {}).get("static", {})
+                    outcome = ("looks clean" if v.verdict == "clean"
+                               else f"FLAGGED as {v.verdict} ({round(v.confidence * 100)}%)")
+                    await em.emit("static_check", "started", f"Tool {i}/{n} '{name}': {outcome}",
+                                  _verdict_detail(v, meta=meta),
+                                  interceptor.engines.get(name, {}).get("static", "none"), meta)
 
             await interceptor.screen_tool_metadata(listed, on_tool=static_progress)
             sv = interceptor._static[tool]
@@ -216,7 +224,17 @@ class _Run:
             detail = _verdict_detail(sv, meta=s_meta, description=tools[tool][1],
                                      requested_scope=interceptor._scope.get(tool),
                                      other_flagged_tools=others, all_tools=all_tools)
-            if sv.verdict == "clean":
+            flagged_all = [t["name"] for t in all_tools if t["verdict"] != "clean"]
+            if self.inspect_only:
+                # inspection mode covers the whole server, so the stage result must say so
+                if flagged_all:
+                    await em.emit("static_check", "flagged",
+                                  f"{len(flagged_all)} of {len(all_tools)} tool descriptions flagged: "
+                                  f"{', '.join(flagged_all)}", detail, s_engine, s_meta)
+                else:
+                    await em.emit("static_check", "passed",
+                                  f"All {len(all_tools)} tool descriptions look clean ✓", detail, s_engine, s_meta)
+            elif sv.verdict == "clean":
                 await em.emit("static_check", "passed", f"'{tool}' metadata looks clean ✓",
                               detail, s_engine, s_meta)
             else:

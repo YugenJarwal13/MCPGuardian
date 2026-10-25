@@ -81,3 +81,33 @@ async def test_adk_judge_can_overrule_statistics_offline():
     assert report.statistical_anomaly and not report.is_anomalous
     assert report.engine == "llm"
     assert "equivalent" in report.explanation
+
+
+async def test_a_judge_that_cannot_be_built_leaves_the_statistical_decision_standing(monkeypatch):
+    """A missing model wrapper (or any failure creating the agent) must not crash the run:
+    the statistics already flagged the drift, so it stays flagged and escalates."""
+    from src.adk_layer import behavioral_anomaly_agent as mod
+
+    def broken(model=None):
+        raise ImportError("LiteLLM support requires: pip install litellm")
+
+    monkeypatch.setattr(mod, "build_adk_anomaly_agent", broken)
+    agent = mod.BehavioralAnomalyAgent(use_llm=True)
+    fp = ToolFingerprint(tool_id="broken_judge_tool")
+    for _ in range(10):
+        fp, _ = await agent.analyze_async(fp, "short", {"v"}, 10)
+    fp, report = await agent.analyze_async(fp, "x" * 5000, {"v"}, 10)
+    assert report.statistical_anomaly and report.is_anomalous
+    assert report.engine == "heuristic"
+
+
+def test_judge_reply_may_think_out_loud_before_the_json():
+    from src.adk_layer.behavioral_anomaly_agent import _parse_judgement
+
+    reply = ('The previous response was {"price": 42} and now there is a new key.\n'
+             'Make sure to output ONLY JSON.\n'
+             '{"escalate": true, "explanation": "A hidden key appeared."}')
+    verdict = _parse_judgement(reply)
+    assert verdict and verdict.escalate is True and "hidden key" in verdict.explanation
+    assert _parse_judgement('```json\n{"escalate": false, "explanation": "ok"}\n```').escalate is False
+    assert _parse_judgement("no json at all") is None

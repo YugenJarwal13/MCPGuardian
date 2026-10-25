@@ -179,6 +179,8 @@
 .args-box summary { cursor: pointer; font-size: var(--fs-sm); color: var(--text-2); padding: 4px 0; }
 .args-box .textarea { margin-top: 8px; }
 .btn.grow { flex: 1; }
+.rug-note { margin-top: 14px; padding: 12px 14px; border-radius: var(--r-md); background: var(--flag-soft); color: var(--text); font-size: var(--fs-sm); line-height: 1.55; border: 1px solid color-mix(in srgb, var(--flag) 30%, transparent); }
+.rug-note .btn { margin-top: 10px; display: flex; width: 100%; }
 @media (max-width: 960px) { .ctrl-card { grid-template-columns: 1fr; } .ctrl-col + .ctrl-col { border-left: 0; border-top: 1px solid var(--border); } }
 .chips-pick { display: flex; flex-wrap: wrap; gap: 8px; }
 .pick-chip { border: 1px solid var(--border-strong); background: var(--surface); border-radius: 999px; padding: 7px 14px; font-size: var(--fs-sm); font-weight: 550; transition: all var(--t-fast); }

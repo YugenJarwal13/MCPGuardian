@@ -155,9 +155,9 @@ export default function TestLivePage({ health }) {
               <div className={`final-verdict ${badCount ? "bad" : "ok"}`} role="status">
                 <span className="vi">{badCount ? <Alert width={30} height={30} /> : <Check width={30} height={30} />}</span>
                 <div>
-                  <h2>{badCount ? `${badCount} of ${tools.length} tools carry hidden instructions` : `No hidden instructions found in ${tools.length === 1 ? "the tool" : `all ${tools.length} tools`}`}</h2>
+                  <h2>{badCount ? `${badCount} of ${tools.length} tools contain instructions aimed at the AI` : `No hidden instructions found in ${tools.length === 1 ? "the tool" : `all ${tools.length} tools`}`}</h2>
                   <p>{badCount
-                    ? "Don’t connect an unprotected AI agent to this server. Guardian would stop the flagged tools before the agent saw them."
+                    ? "Read the quoted phrase on each flagged tool. Real attacks hide orders such as sending data elsewhere or ignoring the user; some servers add legitimate usage hints (for example “always read this guide first”). On real clean tools this detector raises a false alarm about 4% of the time."
                     : "A clean scan isn’t a guarantee: it covers what the tools say about themselves, not what the server does with your data."}</p>
                 </div>
               </div>

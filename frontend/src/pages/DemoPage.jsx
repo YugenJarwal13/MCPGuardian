@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { fetchServers, fetchTools, resetServer } from "../api.js";
+import { useCallback, useEffect, useState } from "react";
+import { fetchServers, fetchTools, resetServer, startRun } from "../api.js";
 import { Info, Play } from "../components/Icons.jsx";
 import RunView from "../components/RunView.jsx";
 import { usePipelineRun } from "../hooks/usePipelineRun.js";
@@ -27,6 +27,43 @@ export default function DemoPage({ health }) {
   const { events, running, error, start, approve, reset } = usePipelineRun();
 
   const modelReady = !health || health.llm?.available;
+
+  // Rug-pull fixture: it behaves for 10 calls and changes on call 11, so the page tracks the call count.
+  const [calls, setCalls] = useState(0);
+  const [ff, setFf] = useState(null);
+  const isRugPull = server?.attack_category === "rug_pull" && server?.calls_made !== undefined;
+  const refreshCalls = useCallback(() => {
+    if (!server) return;
+    fetchServers().then((data) => {
+      const s = [...data.poisoned, ...data.clean].find((x) => x.id === server.id);
+      if (s) setCalls(s.calls_made ?? 0);
+    }).catch(() => {});
+  }, [server]);
+  useEffect(() => { refreshCalls(); }, [refreshCalls, running]);
+
+  const fastForward = async () => {
+    let args;
+    try {
+      args = JSON.parse(argsText || "{}");
+    } catch {
+      setFormError("Arguments must be valid JSON.");
+      return;
+    }
+    const total = Math.max(0, 10 - calls);
+    reset();
+    for (let i = 0; i < total; i += 1) {
+      setFf({ done: i, total });
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, 90000);
+        const handle = startRun({ server_id: server.id, tool_name: toolName || null, arguments: args, use_llm: true }, {
+          onEvent: (ev) => { if (ev.stage === "done") { clearTimeout(timer); handle.close(); resolve(); } },
+          onClose: resolve, onError: resolve,
+        });
+      });
+    }
+    setFf(null);
+    refreshCalls();
+  };
 
   const selectServer = (s) => {
     reset();
@@ -132,12 +169,24 @@ export default function DemoPage({ health }) {
                     <textarea className="textarea" value={argsText} onChange={(e) => setArgsText(e.target.value)}
                       rows={Math.min(6, argsText.split("\n").length + 1)} spellCheck={false} disabled={running} />
                   </details>
+                  {isRugPull && (
+                    <div className="rug-note">
+                      <b>Rug pull:</b> this tool answers normally for its first 10 calls, then changes on call 11.
+                      Calls so far: <b className="num">{calls}</b>.
+                      {calls < 10 && (
+                        <button type="button" className="btn" onClick={fastForward} disabled={running || !!ff || !modelReady}>
+                          {ff ? <><span className="spinner" /> Calling {ff.done + 1}/{ff.total}</> : `Fast-forward to call 11 (${10 - calls} quiet calls)`}
+                        </button>
+                      )}
+                      {calls >= 10 && calls < 11 && <span> The next call is the one that changes.</span>}
+                    </div>
+                  )}
                   <div className="row" style={{ marginTop: 16 }}>
-                    <button type="button" className="btn primary lg grow" onClick={run} disabled={running || !!toolsError || !modelReady}>
+                    <button type="button" className="btn primary lg grow" onClick={run} disabled={running || !!ff || !!toolsError || !modelReady}>
                       {running ? <><span className="spinner" /> Running</> : <><Play /> Run the pipeline</>}
                     </button>
-                    <button type="button" className="btn quiet" disabled={running} title="Forget this server's behavioural history"
-                      onClick={() => resetServer(server.id).then(reset)}>Reset history</button>
+                    <button type="button" className="btn quiet" disabled={running || !!ff} title="Forget this server's behavioural history"
+                      onClick={() => resetServer(server.id).then(() => { reset(); refreshCalls(); })}>Reset history</button>
                   </div>
                 </>
               ) : <p className="muted">Choose a server on the left.</p>}

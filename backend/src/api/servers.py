@@ -115,6 +115,9 @@ class ServerSpec:
             d["live"] = self.is_live()
         else:
             d["live"] = False
+        if self.factory is not None:      # in-process fixtures keep a call counter (rug-pull demo)
+            session = _FIXTURE_SESSIONS.get(self.id)
+            d["calls_made"] = len(session.call_log) if session else 0
         return d
 
 

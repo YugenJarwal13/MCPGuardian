@@ -89,8 +89,8 @@ export function narrate(fold, last) {
       if (d.inspect_only) {
         const tools = d.tools || [];
         const bad = tools.filter((t) => t.verdict !== "clean").length;
-        return mk(bad ? `${bad} of ${tools.length} tools look dangerous` : `All ${tools.length} tools look clean`,
-          bad ? "Guardian read every description on this server and found hidden instructions. No tool was called." : "Guardian read every description and found nothing suspicious. No tool was called.", bad ? "bad" : "ok");
+        return mk(bad ? `${bad} of ${tools.length} tools contain instructions aimed at the AI` : `All ${tools.length} tools look clean`,
+          bad ? "Guardian read every description on this server. The flagged ones contain text that tells the AI what to do; check each quoted phrase. No tool was called." : "Guardian read every description and found nothing suspicious. No tool was called.", bad ? "bad" : "ok");
       }
       const f = d.final_decision;
       if (f === "allow" || f === "escalate_approved") return mk("Safe: delivered to the agent", "Every check passed, so the agent received the response.", "ok");
