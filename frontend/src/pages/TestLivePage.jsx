@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Arrow, Check, Info, Link, Play } from "../components/Icons.jsx";
 import RunView from "../components/RunView.jsx";
 import { usePipelineRun } from "../hooks/usePipelineRun.js";
@@ -52,7 +52,36 @@ export default function TestLivePage({ health }) {
   const [pickedTool, setPickedTool] = useState(null);
   const [argsText, setArgsText] = useState("{}");
   const [formError, setFormError] = useState(null);
-  const { events, running, error, start, approve, reset } = usePipelineRun();
+  const [authType, setAuthType] = useState("none");
+  const [token, setToken] = useState("");
+  const [hName, setHName] = useState("");
+  const [hValue, setHValue] = useState("");
+  const [authOpen, setAuthOpen] = useState(false);
+  const { events, running, error, authSession, start, approve, reset } = usePipelineRun();
+
+  // credentials live only in this component's memory: never in storage, never in the address bar
+  const authBlock = () => {
+    if (authType === "bearer") return { type: "bearer", token };
+    if (authType === "header") return { type: "header", name: hName, value: hValue };
+    if (authType === "oauth") return { type: "oauth", session: authSession || undefined };
+    return undefined;
+  };
+  const authReady = authType === "none" || authType === "oauth" || (authType === "bearer" && token.trim())
+    || (authType === "header" && hName.trim() && hValue.trim());
+  const authFailure = [...events].reverse().find((e) => e.stage === "connect" && e.status === "error" && e.detail?.auth_required);
+  const signIn = useMemo(() => {
+    const last = [...events].reverse().find((e) => e.detail?.oauth_url);
+    const connected = events.some((e) => e.stage === "connect" && e.status === "passed");
+    return last && !connected && running ? last.detail.oauth_url : null;
+  }, [events, running]);
+  const opened = useRef(null);
+  useEffect(() => {
+    if (signIn && opened.current !== signIn) {
+      opened.current = signIn;
+      window.open(signIn, "mcp-guardian-signin", "width=520,height=720");   // may be blocked: the banner has a link
+    }
+  }, [signIn]);
+  useEffect(() => { if (authFailure) setAuthOpen(true); }, [authFailure]);
 
   const modelReady = !health || health.llm?.available;
   const done = [...events].reverse().find((e) => e.stage === "done");
@@ -67,10 +96,15 @@ export default function TestLivePage({ health }) {
       setFormError("Enter an http:// or https:// MCP endpoint, for example https://example.com/sse");
       return;
     }
+    if (!authReady) {
+      setAuthOpen(true);
+      setFormError("Fill in the authentication details, or choose “No authentication”.");
+      return;
+    }
     setFormError(null);
     setMode("inspect");
     setPickedTool(null);
-    start({ server_url: u, inspect_only: true, use_llm: true });
+    start({ server_url: u, inspect_only: true, use_llm: true, auth: authBlock() });
   };
 
   const pick = (t) => {
@@ -88,7 +122,7 @@ export default function TestLivePage({ health }) {
     }
     setFormError(null);
     setMode("call");
-    start({ server_url: url.trim(), tool_name: pickedTool, arguments: args, use_llm: true });
+    start({ server_url: url.trim(), tool_name: pickedTool, arguments: args, use_llm: true, auth: authBlock() });
   };
 
   const clear = () => {
@@ -123,6 +157,49 @@ export default function TestLivePage({ health }) {
             ))}
             {events.length > 0 && !running && <button type="button" className="btn quiet" onClick={clear}>Clear</button>}
           </div>
+          <div className="auth-box" style={{ marginTop: 10, maxWidth: 980 }}>
+            <button type="button" className="btn quiet" aria-expanded={authOpen} onClick={() => setAuthOpen(!authOpen)}>
+              Authentication: {{ none: "none", bearer: "bearer token", header: "custom header", oauth: "sign in (OAuth)" }[authType]} {authOpen ? "▴" : "▾"}
+            </button>
+            {authOpen && (
+              <div className="panel" style={{ marginTop: 8 }}>
+                <label className="field">
+                  <span>How does this server want you to identify yourself?</span>
+                  <select className="select" value={authType} onChange={(e) => setAuthType(e.target.value)} disabled={running}>
+                    <option value="none">No authentication (public server)</option>
+                    <option value="oauth">Sign in with the server (OAuth): a sign-in window opens</option>
+                    <option value="bearer">Bearer token / personal access token</option>
+                    <option value="header">API key in a custom header</option>
+                  </select>
+                </label>
+                {authType === "bearer" && (
+                  <label className="field"><span>Token (sent as “Authorization: Bearer …”)</span>
+                    <input className="input" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} disabled={running} placeholder="paste the token" /></label>
+                )}
+                {authType === "header" && (
+                  <div className="row" style={{ alignItems: "flex-end", gap: 12 }}>
+                    <label className="field" style={{ flex: 1 }}><span>Header name</span>
+                      <input className="input" value={hName} onChange={(e) => setHName(e.target.value)} disabled={running} placeholder="X-API-Key" spellCheck={false} /></label>
+                    <label className="field" style={{ flex: 2 }}><span>Value</span>
+                      <input className="input" type="password" autoComplete="off" value={hValue} onChange={(e) => setHValue(e.target.value)} disabled={running} placeholder="paste the key" /></label>
+                  </div>
+                )}
+                {authType === "oauth" && <p className="muted" style={{ fontSize: "var(--fs-sm)", margin: "10px 0 0" }}>Guardian registers itself with the server, then asks you to approve access in the server’s own sign-in window. The tokens stay in memory on the Guardian server for about an hour and are never written to disk.</p>}
+                <p className="muted" style={{ fontSize: "var(--fs-xs)", margin: "10px 0 0" }}>A key the server expects in the address (for example <code>?apikey=…</code>) can simply stay in the URL. Credentials are used for this check only and are hidden from the event log, the traces and the audit trail.</p>
+              </div>
+            )}
+          </div>
+          {authFailure && (
+            <div className="notice warn" style={{ marginTop: 14, maxWidth: 980 }}>
+              {authFailure.message}{authFailure.detail?.oauth_advertised && authType === "none" ? " This server offers OAuth sign-in: choose “Sign in with the server” under Authentication." : ""}
+            </div>
+          )}
+          {signIn && (
+            <div className="notice warn" style={{ marginTop: 14, maxWidth: 980 }} role="status">
+              <b>Sign-in needed.</b> A window should have opened. If not,{" "}
+              <a href={signIn} target="mcp-guardian-signin" rel="noreferrer">open the server’s sign-in page</a>, approve access, then come back: the check continues by itself.
+            </div>
+          )}
           {(formError || error) && <div className="notice error" style={{ marginTop: 14, maxWidth: 980 }}>{formError || error}</div>}
           {!modelReady && <div className="notice error" style={{ marginTop: 14, maxWidth: 980 }}>No language model is reachable, so servers cannot be checked. Check the backend's OpenRouter settings.</div>}
           <Steps step={step} />
@@ -138,7 +215,7 @@ export default function TestLivePage({ health }) {
                 ["What it doesn’t do", "It is not a full security audit. A clean scan means no hidden instructions were found in the text; it can’t see bugs inside the server’s own code."],
                 ["Safe by default", health?.public_mode
                   ? "Only public http(s) addresses are accepted; local and internal ones are refused. Runs are rate-limited, and the AI-inspector budget is shared and resets daily. No tool is called unless you choose to."
-                  : "Only http(s) addresses are accepted. Credentials in URLs and cloud-metadata addresses are refused. No tool is called unless you choose to."],
+                  : "Only http(s) addresses are accepted. Passwords inside the address and cloud-metadata addresses are refused. No tool is called unless you choose to."],
               ].map(([t, p]) => (
                 <div key={t} className="fcard"><h3 style={{ fontSize: "1.1rem" }}>{t}</h3><p style={{ fontSize: "0.95rem" }}>{p}</p></div>
               ))}
@@ -161,6 +238,13 @@ export default function TestLivePage({ health }) {
                     : "A clean scan isn’t a guarantee: it covers what the tools say about themselves, not what the server does with your data."}</p>
                 </div>
               </div>
+
+              {inspected.detail.not_inspected?.length > 0 && (
+                <div className="notice warn">
+                  This server offers {tools.length + inspected.detail.not_inspected.length} tools. To keep runs affordable only {tools.length} were inspected.
+                  Not inspected: {inspected.detail.not_inspected.slice(0, 8).join(", ")}{inspected.detail.not_inspected.length > 8 ? ` and ${inspected.detail.not_inspected.length - 8} more` : ""}.
+                </div>
+              )}
 
               <div>
                 <h3 style={{ fontSize: "1.4rem", marginBottom: 14 }}>Tool by tool</h3>
@@ -201,7 +285,8 @@ export default function TestLivePage({ health }) {
             <strong><Info width={14} height={14} style={{ verticalAlign: -2 }} /> Not supported yet</strong>
             <ul>
               <li>stdio servers (the endpoint must be reachable over http/https: SSE <code>…/sse</code> or streamable HTTP)</li>
-              <li>servers that need authentication headers or OAuth</li>
+              <li>servers with a custom sign-in flow (anything other than a token, an API-key header, a key in the address, or OAuth)</li>
+              <li>servers’ resources and prompts: only their tools are inspected</li>
               <li>keeping a session open across several calls, and saving or sharing a report</li>
             </ul>
           </div>

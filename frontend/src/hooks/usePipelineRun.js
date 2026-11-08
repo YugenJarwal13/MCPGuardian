@@ -20,6 +20,7 @@ export function usePipelineRun() {
   const [events, setEvents] = useState([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
+  const [authSession, setAuthSession] = useState(null);
   const handle = useRef(null);
   const queue = useRef([]);
   const timer = useRef(null);
@@ -69,6 +70,7 @@ export function usePipelineRun() {
           queue.current.push(ev);
           drain();
         },
+        onSession: setAuthSession,
         onClose: () => {
           closed.current = true;
           if (!queue.current.length && !timer.current) setRunning(false);
@@ -92,5 +94,5 @@ export function usePipelineRun() {
     setRunning(false);
   }, [stop]);
 
-  return { events, running, error, start, approve, reset };
+  return { events, running, error, authSession, start, approve, reset };
 }

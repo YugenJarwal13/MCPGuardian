@@ -32,10 +32,14 @@ function wsUrl(path) {
  * Start a pipeline run. Calls onEvent(event) for every streamed stage event.
  * Returns { approve(bool), close() }.
  */
-export function startRun(request, { onEvent, onClose, onError }) {
+export function startRun(request, { onEvent, onClose, onError, onSession }) {
   const ws = new WebSocket(wsUrl("/ws/run"));
   ws.onopen = () => ws.send(JSON.stringify(request));
-  ws.onmessage = (msg) => onEvent(JSON.parse(msg.data));
+  ws.onmessage = (msg) => {
+    const data = JSON.parse(msg.data);
+    if (data.type === "auth_session") onSession?.(data.session);   // handle to this visitor's in-memory sign-in
+    else onEvent(data);
+  };
   ws.onerror = () => onError?.(new Error("WebSocket error: is the API running on port 8000?"));
   ws.onclose = () => onClose?.();
   return {

@@ -59,6 +59,7 @@ class EventEmitter:
         self._root_ctx = trace.set_span_in_context(self._root)
         self._spans: dict[str, tuple[Any, Any]] = {}      # stage -> (span, context token)
         self._closed = False
+        self.scrub = lambda value: value     # set to redact credentials from everything that leaves the run
 
     # -- tracing ---------------------------------------------------------------
     def _open_stage(self, stage: str, message: str) -> None:
@@ -110,6 +111,7 @@ class EventEmitter:
                    detail: Optional[dict] = None, engine: str = "none",
                    model_meta: Optional[dict] = None) -> PipelineEvent:
         now = time.monotonic()
+        message, detail = self.scrub(message), self.scrub(detail)
         if status == "started":
             self._stage_start[stage] = now
             elapsed = 0.0

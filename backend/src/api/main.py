@@ -71,6 +71,26 @@ def health() -> dict:
             "tracing": {"file": True, "langfuse": langfuse_configured()}}
 
 
+_CALLBACK_PAGE = ("<!doctype html><meta charset=utf-8><title>MCP Guardian</title>"
+                  "<body style='font:16px system-ui;padding:3rem;max-width:34rem;margin:auto'>"
+                  "<h2>{title}</h2><p>{body}</p><script>setTimeout(()=>window.close(),1500)</script>")
+
+
+@app.get("/oauth/callback")
+def oauth_callback(state: str = "", code: str | None = None, error: str | None = None):
+    """Where a server's sign-in page sends the visitor back. Hands the code to the run that is waiting."""
+    from fastapi.responses import HTMLResponse
+
+    from src.api.live_server import complete_oauth
+
+    if complete_oauth(state, code, error):
+        page = _CALLBACK_PAGE.format(title="Signed in", body="You can close this window and return to MCP Guardian.")
+        return HTMLResponse(page)
+    return HTMLResponse(_CALLBACK_PAGE.format(
+        title="Nothing is waiting for this sign-in",
+        body="The check may have timed out. Go back to MCP Guardian and start it again."), status_code=400)
+
+
 @app.post("/servers/{server_id}/reset")
 def reset_server(server_id: str) -> dict:
     """Forget a server's behavioural history (and fixture call counts)."""

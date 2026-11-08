@@ -120,6 +120,7 @@ class GuardianInterceptor:
         self._anomalous: dict[str, bool] = {}
         # Tools whose description/schema differs from the first one seen (a rug pull on the definition).
         self.definition_changes: dict[str, dict] = {}
+        self.not_inspected: list[str] = []      # tools beyond the per-run inspection cap
         self._scope: dict[str, Optional[str]] = {}
         # Which engine produced each tool's verdicts: {"static": ..., "runtime": ...}.
         self.engines: dict[str, dict[str, str]] = {}
@@ -127,45 +128,73 @@ class GuardianInterceptor:
         self.models: dict[str, dict[str, dict]] = {}
 
     # -- metadata screening ------------------------------------------
-    async def screen_tool_metadata(self, tools: Any, on_tool: Optional[Callable] = None) -> Any:
-        """Static-screen every listed tool. ``on_tool(i, n, name, phase)`` (async, optional)
-        is awaited with phase "start"/"done" so a streaming caller can report progress."""
+    async def screen_tool_metadata(self, tools: Any, on_tool: Optional[Callable] = None,
+                                   limit: Optional[int] = None, workers: int = 1,
+                                   first: Optional[str] = None) -> Any:
+        """Static-screen the listed tools. ``on_tool(i, n, name, phase)`` (async, optional)
+        is awaited with phase "start"/"done" so a streaming caller can report progress.
+
+        ``limit`` caps how many tools are inspected (the rest are recorded in ``not_inspected``);
+        ``first`` names a tool that is always inspected, whatever the cap. ``workers`` > 1 inspects
+        several tools at once (each inspection is an independent model call)."""
         if not self._ablation.enable_static:
             return tools
         all_tools = list(_iter_tools(tools))
-        for i, tool in enumerate(all_tools, start=1):
-            if on_tool is not None:
-                await on_tool(i, len(all_tools), _tool_fields(tool)[0], "start")
-            name, desc, schema = _tool_fields(tool)
-            # Detectors are sync (and an LLM call can take seconds): run them off
-            # the event loop so streaming callers stay responsive.
-            verdict, engine, meta = await asyncio.to_thread(
-                analyze_static_meta, name, desc, schema, self._use_llm)
-            self._static[name] = verdict
-            if self._store is not None and self._ablation.enable_behavioral:
-                changed, first_seen = self._store.check_definition(name, desc, schema)
-                if changed:
-                    self.definition_changes[name] = {"first_seen": first_seen, "now": desc}
-                    log_decision({"layer": "behavioral", "tool_name": name, "anomalous": True,
-                                  "event": "definition_changed", "first_seen": first_seen[:600],
-                                  "now": (desc or "")[:600]})
-                else:
-                    self.definition_changes.pop(name, None)
-            self.engines.setdefault(name, {})["static"] = engine
-            self.models.setdefault(name, {})["static"] = meta
-            self._scope[name] = ToolTestCase(
-                case_id="live", source="custom", tool_name=name, tool_description=desc,
-                tool_schema=schema, ground_truth_label="clean",
-            ).requested_scope()
-            log_decision({
-                "layer": "static", "tool_name": name, "verdict": verdict.verdict,
-                "confidence": verdict.confidence, "reasoning": verdict.reasoning,
-                "flagged_phrases": verdict.flagged_phrases, "engine": engine,
-                **_model_fields(meta),
-            })
-            if on_tool is not None:
-                await on_tool(i, len(all_tools), name, "done")
+        self.not_inspected = []
+        if limit is not None and len(all_tools) > limit:
+            keep = all_tools[:limit]
+            if first and all(_tool_fields(t)[0] != first for t in keep):
+                extra = next((t for t in all_tools if _tool_fields(t)[0] == first), None)
+                if extra is not None:
+                    keep = keep[:-1] + [extra]
+            kept_names = {_tool_fields(t)[0] for t in keep}
+            self.not_inspected = [_tool_fields(t)[0] for t in all_tools if _tool_fields(t)[0] not in kept_names]
+            all_tools = keep
+        gate = asyncio.Semaphore(max(1, workers))
+        counter = {"started": 0, "done": 0}
+
+        async def one(tool: Any) -> None:
+            async with gate:
+                counter["started"] += 1
+                await self._screen_one(tool, on_tool, counter, len(all_tools))
+
+        await asyncio.gather(*(one(t) for t in all_tools))
         return tools
+
+    async def _screen_one(self, tool: Any, on_tool: Optional[Callable], counter: dict, total: int) -> None:
+        i = counter["started"]
+        if on_tool is not None:
+            await on_tool(i, total, _tool_fields(tool)[0], "start")
+        name, desc, schema = _tool_fields(tool)
+        # Detectors are sync (and an LLM call can take seconds): run them off
+        # the event loop so streaming callers stay responsive.
+        verdict, engine, meta = await asyncio.to_thread(
+            analyze_static_meta, name, desc, schema, self._use_llm)
+        self._static[name] = verdict
+        if self._store is not None and self._ablation.enable_behavioral:
+            changed, first_seen = self._store.check_definition(name, desc, schema)
+            if changed:
+                self.definition_changes[name] = {"first_seen": first_seen, "now": desc}
+                log_decision({"layer": "behavioral", "tool_name": name, "anomalous": True,
+                              "event": "definition_changed", "first_seen": first_seen[:600],
+                              "now": (desc or "")[:600]})
+            else:
+                self.definition_changes.pop(name, None)
+        self.engines.setdefault(name, {})["static"] = engine
+        self.models.setdefault(name, {})["static"] = meta
+        self._scope[name] = ToolTestCase(
+            case_id="live", source="custom", tool_name=name, tool_description=desc,
+            tool_schema=schema, ground_truth_label="clean",
+        ).requested_scope()
+        log_decision({
+            "layer": "static", "tool_name": name, "verdict": verdict.verdict,
+            "confidence": verdict.confidence, "reasoning": verdict.reasoning,
+            "flagged_phrases": verdict.flagged_phrases, "engine": engine,
+            **_model_fields(meta),
+        })
+        counter["done"] += 1
+        if on_tool is not None:
+            await on_tool(counter["done"], total, name, "done")
 
     # -- pre-call enforcement gate -----------------------------------
     def verdicts_for(self, name: str) -> dict:

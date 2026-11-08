@@ -12,6 +12,7 @@ export default defineConfig({
     proxy: {
       "/servers": api,
       "/health": api,
+      "/oauth": api,
       "/ws": { target: api.replace(/^http/, "ws"), ws: true },
     },
   },

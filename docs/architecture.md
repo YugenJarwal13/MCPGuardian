@@ -100,3 +100,13 @@ pipeline of inspection agents before the caller ever sees the result.
   ADK's own spans land in the same provider. The trace id is carried on every event, in the audit trail and in the
   live console.
 * **Evaluation and cost.** `docs/evaluation_report.md` (accuracy) and `docs/cost_and_runtime.md` (tokens, time, money).
+
+## Reaching arbitrary remote servers
+
+`backend/src/api/live_server.py` holds everything the Check page needs for a user-supplied endpoint: parsing and
+redacting credentials (bearer, header, query key, OAuth), an endpoint probe that picks streamable HTTP or SSE and
+detects a login requirement, and the OAuth authorisation-code flow driven through the browser (`/oauth/callback`).
+Every outgoing request, including each redirect hop and each OAuth discovery URL, goes through a client that
+re-checks the destination in public mode. It resolves the name itself, so a DNS answer that changes in the instant
+between check and connect is narrowed but not excluded. Credentials never reach events, traces or the audit trail:
+`EventEmitter.scrub` redacts them before anything is logged or sent.

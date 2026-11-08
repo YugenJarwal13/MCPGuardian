@@ -29,7 +29,15 @@ from src.adk_layer.state.tool_fingerprint_store import ToolFingerprintStore
 from src.adk_layer.behavioral_anomaly_agent import BehavioralAnomalyAgent
 from src.api.events import EventEmitter
 from src.audit import log_decision
-from src.api.servers import CustomServerError, custom_spec, default_args_from_schema, get_spec, open_session
+from src.api import live_server as live
+from src.api.servers import (
+    CustomServerError,
+    custom_spec,
+    default_args_from_schema,
+    get_spec,
+    list_all_tools,
+    open_session,
+)
 from src.crewai_layer.crew import llm_available
 from src.evaluation.ablation_config import AblationConfig
 from src.security.input_guard import check_arguments, check_url
@@ -42,6 +50,16 @@ from src.mcp_gateway.interceptor import (
 )
 
 APPROVAL_TIMEOUT_S = 300
+STATIC_WORKERS = 4
+
+
+def _max_tools() -> int:
+    import os
+
+    try:
+        return int(os.environ.get("GUARDIAN_MAX_TOOLS", 40 if public_mode() else 150))
+    except ValueError:
+        return 40
 router = APIRouter()
 
 # Per-server fingerprint stores live for the API process, so repeated runs
@@ -110,8 +128,11 @@ class _Run:
         self.precall_approved: bool | None = None
         self.ws = ws
         self.req = req
+        self.cred = live.Credentials()
         if req.get("server_url"):
             self.spec = custom_spec(req["server_url"])     # may raise CustomServerError
+            self.cred = live.parse_credentials(req.get("auth"), req["server_url"])     # may raise AuthError
+            self.spec.headers = self.cred.headers
             self.server_id = self.spec.id
         else:
             self.server_id = req["server_id"]
@@ -120,6 +141,7 @@ class _Run:
         self.notice: str | None = None           # shown on the connect step (e.g. a lab server is inspect-only)
         self.a2a = a2a_client
         self.em = EventEmitter(uuid.uuid4().hex[:12], self._send, self.server_id)
+        self.em.scrub = lambda value: live.scrub(value, self.cred.secrets)
 
     async def _send(self, payload: dict) -> None:
         await self.ws.send_json(payload)
@@ -134,6 +156,57 @@ class _Run:
                     return bool(msg.get("approved"))
         except asyncio.TimeoutError:
             return False
+
+    def _connect_hint(self) -> str:
+        if self.spec.url:
+            return ("The address must be a remote MCP endpoint (streamable HTTP or SSE). "
+                    "If the server needs a key or sign-in, choose it under “Authentication”.")
+        return "See the README for how to start the lab servers."
+
+    async def _prepare_custom(self, where: str) -> bool:
+        """Find out what a user-supplied endpoint speaks and set up its credentials.
+        Returns False (after reporting why) when the run cannot go on."""
+        em, spec, cred = self.em, self.spec, self.cred
+        probe = await live.probe_endpoint(spec.url, cred.headers)
+        if probe.error:
+            await em.emit("connect", "error", probe.error, {"endpoint": where, "hint": self._connect_hint()})
+            await em.emit("done", "error", "Run aborted — could not connect.")
+            return False
+        if probe.auth_required and cred.kind == "oauth":
+            spec.transport = "sse" if spec.url.split("?")[0].rstrip("/").endswith("/sse") else "streamable-http"
+            return await self._setup_oauth(where)
+        if probe.auth_required:
+            if cred.kind in ("bearer", "header") or cred.secrets:
+                msg = (f"The server rejected the credentials (HTTP {probe.status}). Check the token or key, "
+                       "and that it has access to this server.")
+            else:
+                msg = f"This server requires authentication (HTTP {probe.status}). Choose how to sign in below."
+            await em.emit("connect", "error", msg,
+                          {"endpoint": where, "auth_required": True, "oauth_advertised": probe.oauth_advertised,
+                           "hint": self._connect_hint()})
+            await em.emit("done", "error", "Run aborted — authentication needed.")
+            return False
+        spec.transport = probe.transport or spec.transport
+        if cred.kind == "oauth":
+            cred_note = "This server did not ask for a sign-in, so none was used."
+            self.notice = f"{self.notice} {cred_note}".strip() if self.notice else cred_note
+        return True
+
+    async def _setup_oauth(self, where: str) -> bool:
+        em, spec, cred = self.em, self.spec, self.cred
+        sid, storage = live.oauth_session_secret(cred.oauth_session)
+        origin = self.ws.headers.get("origin")
+        redirect = live.oauth_redirect_uri(origin, self.ws.scope.get("server"))
+
+        async def announce(auth_url: str) -> None:
+            await em.emit("connect", "started", "Sign-in needed: open the server's sign-in page and approve access.",
+                          {"oauth_url": auth_url, "endpoint": where})
+
+        spec.auth = live.build_oauth(spec.url, redirect, storage, announce)
+        await self.ws.send_json({"type": "auth_session", "session": sid})     # not logged: a handle to in-memory tokens
+        if live.has_oauth_tokens(sid):
+            await em.emit("connect", "started", "Reusing your earlier sign-in for this server…", {"endpoint": where})
+        return True
 
     async def run(self) -> None:
         em, spec = self.em, self.spec
@@ -168,22 +241,24 @@ class _Run:
             human_approval_callback=human, a2a_client=self.a2a)
 
         # 1. connect ---------------------------------------------------------
-        where = (spec.url if spec.url else f"127.0.0.1:{spec.port}/sse" if spec.port
+        where = (live.display_url(spec.url) if spec.url else f"127.0.0.1:{spec.port}/sse" if spec.port
                  else "in-process fixture")
         await em.emit("connect", "started", f"Connecting to {spec.name} ({where})…")
-        if (spec.port is not None or spec.url) and not spec.is_live():
-            hint = ("Start the lab: python scripts/run_dvmcp_native.py" if spec.port
-                    else "Nothing is reachable at that address.")
-            await em.emit("connect", "error", f"Cannot reach {where}. {hint}")
+        if spec.url:
+            if not await self._prepare_custom(where):
+                return
+        elif spec.port is not None and not spec.is_live():
+            await em.emit("connect", "error", f"Cannot reach {where}. Start the lab: python scripts/run_dvmcp_native.py")
             await em.emit("done", "error", "Run aborted — server offline.")
             return
         try:
             session_cm = open_session(spec)
             session = await session_cm.__aenter__()
         except BaseException as exc:      # noqa: BLE001 - surfaced to the user, not swallowed
+            if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt)):
+                raise
             await em.emit("connect", "error", f"MCP handshake failed ({spec.transport}): {_friendly_error(exc)}",
-                          {"transport": spec.transport, "endpoint": where,
-                           "hint": "Supported: SSE (.../sse) and streamable HTTP. stdio servers: not yet supported."})
+                          {"transport": spec.transport, "endpoint": where, "hint": self._connect_hint()})
             await em.emit("done", "error", "Run aborted — could not connect.")
             return
         try:
@@ -194,7 +269,7 @@ class _Run:
 
             # 2. list_tools ----------------------------------------------------
             await em.emit("list_tools", "started", "Listing tools (tools/list)…")
-            listed = await session.list_tools()
+            listed = await list_all_tools(session)
             tools = {(f := _tool_fields(t))[0]: f for t in _iter_tools(listed)}
             tool = self.req.get("tool_name") or spec.default_tool or next(iter(tools), None)
             if tool not in tools:
@@ -227,7 +302,11 @@ class _Run:
                                   _verdict_detail(v, meta=meta),
                                   interceptor.engines.get(name, {}).get("static", "none"), meta)
 
-            await interceptor.screen_tool_metadata(listed, on_tool=static_progress)
+            cap = _max_tools() if spec.url else None
+            await interceptor.screen_tool_metadata(
+                listed, on_tool=static_progress, limit=cap, first=tool,
+                workers=STATIC_WORKERS if use_llm else 1)
+            skipped = interceptor.not_inspected
             sv = interceptor._static[tool]
             s_engine = interceptor.engines.get(tool, {}).get("static", "none")
             s_meta = interceptor.models.get(tool, {}).get("static", {})
@@ -244,7 +323,7 @@ class _Run:
             change = interceptor.definition_changes.get(tool)
             detail = _verdict_detail(sv, meta=s_meta, description=tools[tool][1],
                                      requested_scope=interceptor._scope.get(tool),
-                                     other_flagged_tools=others, all_tools=all_tools,
+                                     other_flagged_tools=others, all_tools=all_tools, not_inspected=skipped,
                                      **({"definition_change": change} if change else {}))
             flagged_all = [t["name"] for t in all_tools if t["verdict"] != "clean" or t["definition_changed"]]
             if self.inspect_only:
@@ -252,10 +331,12 @@ class _Run:
                 if flagged_all:
                     await em.emit("static_check", "flagged",
                                   f"{len(flagged_all)} of {len(all_tools)} tool descriptions flagged: "
-                                  f"{', '.join(flagged_all)}", detail, s_engine, s_meta)
+                                  f"{', '.join(flagged_all[:12])}{'…' if len(flagged_all) > 12 else ''}", detail, s_engine, s_meta)
                 else:
                     await em.emit("static_check", "passed",
-                                  f"All {len(all_tools)} tool descriptions look clean ✓", detail, s_engine, s_meta)
+                                  f"All {len(all_tools)} inspected tool descriptions look clean ✓"
+                                  + (f" ({len(skipped)} more were not inspected: over the limit of {len(all_tools)} per run)"
+                                     if skipped else ""), detail, s_engine, s_meta)
             elif change:
                 await em.emit("static_check", "flagged",
                               f"'{tool}' changed since it was first seen: rug pull on the tool definition!",
@@ -272,7 +353,7 @@ class _Run:
                 await em.emit("done", "flagged" if flagged else "passed",
                               f"Inspection complete — {len(flagged)} of {len(all_tools)} tool(s) flagged. "
                               "Pick a tool below to call it through the Guardian.",
-                              {"inspect_only": True, "tools": all_tools,
+                              {"inspect_only": True, "tools": all_tools, "not_inspected": skipped,
                                "engines": {t["name"]: t["engine"] for t in all_tools}})
                 return
 
@@ -448,7 +529,7 @@ async def ws_run(ws: WebSocket) -> None:
             await ws.send_json({"stage": "done", "status": "error",
                                 "message": f"Unknown server '{req.get('server_id')}'"})
             return
-        except CustomServerError as exc:
+        except (CustomServerError, live.AuthError) as exc:
             await ws.send_json({"stage": "connect", "status": "error", "message": str(exc),
                                 "detail": {}, "engine": "none", "elapsed_ms": 0})
             await ws.send_json({"stage": "done", "status": "error", "message": "Run aborted.",

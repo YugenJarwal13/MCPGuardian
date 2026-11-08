@@ -63,8 +63,21 @@ On macOS/Linux run the same commands by hand: `cd backend && python -m uvicorn s
 | **Live demo** | Pick a DVMCP or fixture server and run one tool call. An animated diagram follows the call through every check, with a plain-English narration, the backend event log and the without/with-Guardian comparison. Approvals appear inline. |
 | **Check a server** | Paste the URL of any public MCP server (SSE or streamable HTTP). Guardian reads every tool it offers with its LLM inspectors and reports which ones carry hidden instructions. You can then run one tool through the full pipeline. |
 
-Both live pages use the LLM pipeline only. Not supported yet: stdio servers, servers that need authentication, and
-multi-call sessions.
+Both live pages use the LLM pipeline only. Not supported yet: stdio servers, custom sign-in flows, MCP resources and
+prompts (only tools are inspected), and multi-call sessions.
+
+**Servers that need a login.** Open *Authentication* on the Check page and choose one of:
+
+- **Sign in with the server (OAuth):** Guardian registers itself with the server, opens its sign-in window and
+  continues when you approve. Tokens stay in memory for about an hour and are never written to disk.
+- **Bearer token** or **API key in a custom header.**
+- A key the server expects in the address (`https://host/mcp?apikey=...`) can stay in the URL.
+
+Credentials are used for that check only and are removed from the event stream, the traces and the audit trail.
+The endpoint's transport (streamable HTTP or SSE) is detected automatically, a 401 is explained instead of timing
+out, and tool lists that span several pages are read in full. Remote servers are capped at 40 tools per run in
+public mode and 150 locally (`GUARDIAN_MAX_TOOLS`); tools beyond the cap are listed as not inspected.
+For OAuth on a public deployment set `GUARDIAN_PUBLIC_URL` to the site's address.
 
 Public servers that work without a login: DeepWiki `https://mcp.deepwiki.com/mcp`, Microsoft Learn
 `https://learn.microsoft.com/api/mcp`, Cloudflare Docs `https://docs.mcp.cloudflare.com/mcp`, Context7

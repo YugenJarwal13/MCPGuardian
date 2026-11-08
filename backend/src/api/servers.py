@@ -27,6 +27,7 @@ from src.demo_agent.agent_config import (
 )
 
 DVMCP_HOST = "127.0.0.1"
+CONNECT_TIMEOUT_S = 30
 
 _TITLES = {
     1: "Basic Prompt Injection", 2: "Tool Poisoning", 3: "Excessive Permission Scope",
@@ -86,6 +87,8 @@ class ServerSpec:
     factory: Optional[Callable[[], FakeMCPSession]] = None
     url: Optional[str] = None            # user-supplied MCP endpoint ("Test a server LIVE")
     transport: str = "sse"               # "sse" | "streamable-http" (custom URLs only)
+    headers: dict = field(default_factory=dict, repr=False)   # credentials: never serialised or logged
+    auth: Any = field(default=None, repr=False)               # httpx.Auth (OAuth), custom URLs only
     flips_after: Optional[int] = None    # rug-pull fixtures: the tool changes after this many calls
     rug_hint: Optional[str] = None
 
@@ -176,7 +179,6 @@ def custom_spec(url: str) -> ServerSpec:
     Only http(s) MCP endpoints are supported: ``.../sse`` (legacy SSE transport) or any
     other path, tried as streamable HTTP. stdio servers cannot be reached from here.
     Credentials in the URL and link-local addresses (cloud metadata endpoints) are refused."""
-    import hashlib
     import ipaddress
     from urllib.parse import urlparse
 
@@ -191,10 +193,11 @@ def custom_spec(url: str) -> ServerSpec:
         link_local = False           # a hostname, not an IP literal
     if link_local:
         raise CustomServerError("Link-local addresses (e.g. cloud metadata endpoints) are not allowed.")
+    from src.api.live_server import server_key
+
     transport = "sse" if u.path.rstrip("/").endswith("/sse") else "streamable-http"
-    sid = "custom-" + hashlib.sha1(url.encode()).hexdigest()[:10]
-    return ServerSpec(sid, f"{u.netloc}{u.path or ''}", "custom", "custom-url", url=url.strip(),
-                      transport=transport)
+    return ServerSpec(server_key(url.strip()), f"{u.netloc}{u.path or ''}", "custom", "custom-url",
+                      url=url.strip(), transport=transport)
 
 
 def get_spec(server_id: str) -> ServerSpec:
@@ -213,29 +216,73 @@ async def open_session(spec: ServerSpec) -> AsyncIterator[Any]:
             _FIXTURE_SESSIONS[spec.id] = spec.factory()
         yield _FIXTURE_SESSIONS[spec.id]
         return
+    import anyio
     from mcp import ClientSession
     from mcp.client.sse import sse_client
+
+    from src.api.live_server import guarded_client_factory
 
     if spec.url and spec.transport == "streamable-http":
         from mcp.client.streamable_http import streamablehttp_client
 
-        async with streamablehttp_client(spec.url) as (read, write, _sid):
+        async with streamablehttp_client(spec.url, headers=spec.headers or None, auth=spec.auth,
+                                         httpx_client_factory=guarded_client_factory) as (read, write, _sid):
             async with ClientSession(read, write) as session:
-                await session.initialize()
+                with anyio.fail_after(CONNECT_TIMEOUT_S):
+                    await session.initialize()
                 yield session
         return
     target = spec.url or f"http://{DVMCP_HOST}:{spec.port}/sse"
-    async with sse_client(target) as (read, write):
+    extra = ({"headers": spec.headers or None, "auth": spec.auth, "httpx_client_factory": guarded_client_factory}
+             if spec.url else {})
+    async with sse_client(target, **extra) as (read, write):
         async with ClientSession(read, write) as session:
-            await session.initialize()
+            with anyio.fail_after(CONNECT_TIMEOUT_S):
+                await session.initialize()
             yield session
 
 
+MAX_TOOL_PAGES = 30
+
+
+async def list_all_tools(session: Any) -> Any:
+    """``tools/list`` across every page: servers with many tools paginate their answer."""
+    listed = await session.list_tools()
+    cursor = getattr(listed, "nextCursor", None)
+    pages = 1
+    while cursor and pages < MAX_TOOL_PAGES:
+        page = await session.list_tools(cursor=cursor)
+        listed.tools.extend(page.tools)
+        cursor = getattr(page, "nextCursor", None)
+        pages += 1
+    return listed
+
+
 def default_args_from_schema(schema: dict) -> dict:
+    """Starter arguments for a tool: required fields only, using the schema's own default, example or
+    first allowed value where it gives one."""
+    props = (schema or {}).get("properties", {}) or {}
+    required = (schema or {}).get("required") or list(props)
     out = {}
-    for name, prop in (schema or {}).get("properties", {}).items():
-        t = (prop or {}).get("type")
-        out[name] = 1 if t in ("integer", "number") else (False if t == "boolean" else "demo")
+    for name in required:
+        prop = props.get(name) or {}
+        t = prop.get("type")
+        if "default" in prop:
+            out[name] = prop["default"]
+        elif prop.get("enum"):
+            out[name] = prop["enum"][0]
+        elif prop.get("examples"):
+            out[name] = prop["examples"][0]
+        elif t in ("integer", "number"):
+            out[name] = 1
+        elif t == "boolean":
+            out[name] = False
+        elif t == "array":
+            out[name] = []
+        elif t == "object":
+            out[name] = {}
+        else:
+            out[name] = "demo"
     return out
 
 
@@ -261,7 +308,7 @@ async def list_server_tools(server_id: str) -> list[dict]:
     if spec.port is not None and not spec.is_live():
         raise HTTPException(503, f"{spec.name} is not running on port {spec.port}")
     async with open_session(spec) as session:
-        listed = await session.list_tools()
+        listed = await list_all_tools(session)
     tools = []
     for t in _iter_tools(listed):
         name, desc, schema = _tool_fields(t)
