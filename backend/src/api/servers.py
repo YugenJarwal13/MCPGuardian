@@ -260,6 +260,40 @@ async def list_all_tools(session: Any) -> Any:
     return listed
 
 
+_READ_VERBS = ("get", "list", "search", "read", "fetch", "find", "query", "lookup", "describe", "show", "count",
+               "check", "resolve", "view", "browse", "ask")
+_WRITE_WORDS = ("create", "delete", "remove", "update", "write", "send", "post", "set", "add", "edit", "push",
+                "merge", "deploy", "drop", "kill", "cancel", "execute", "exec", "run", "upload", "publish",
+                "transfer", "pay", "buy", "order", "commit", "reset", "clear", "move", "rename", "save")
+
+
+def _derivable(schema: dict) -> bool:
+    """True when every required argument can be filled from the schema itself (default, example, choice, flag)."""
+    props = (schema or {}).get("properties", {}) or {}
+    for name in (schema or {}).get("required") or []:
+        p = props.get(name) or {}
+        if not ("default" in p or p.get("enum") or p.get("examples") or p.get("type") in ("boolean",)):
+            return False
+    return True
+
+
+def safe_to_try(name: str, schema: dict, annotations: Any, verdict: str, scope: Optional[str],
+                definition_changed: bool, needs_no_input: bool = True) -> bool:
+    """Offer a one-click full-pipeline run only for tools that look read-only and need no invented input.
+    With ``needs_no_input=False`` only the read-only judgement is made (the caller fills in the arguments)."""
+    if verdict != "clean" or scope or definition_changed or (needs_no_input and not _derivable(schema)):
+        return False
+    words = name.lower().replace("-", "_").split("_")
+    if any(w in _WRITE_WORDS for w in words):
+        return False
+    hint = getattr(annotations, "readOnlyHint", None)
+    if hint is None and isinstance(annotations, dict):
+        hint = annotations.get("readOnlyHint")
+    if getattr(annotations, "destructiveHint", None) or (isinstance(annotations, dict) and annotations.get("destructiveHint")):
+        return False
+    return bool(hint) or words[0] in _READ_VERBS
+
+
 def default_args_from_schema(schema: dict) -> dict:
     """Starter arguments for a tool: required fields only, using the schema's own default, example or
     first allowed value where it gives one."""

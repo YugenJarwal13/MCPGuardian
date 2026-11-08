@@ -125,6 +125,21 @@ export default function TestLivePage({ health }) {
     start({ server_url: url.trim(), tool_name: pickedTool, arguments: args, use_llm: true, auth: authBlock() });
   };
 
+  const trial = tools ? tools.find((t) => t.safe_to_try) : null;
+  const suggested = tools && !trial ? tools.find((t) => t.looks_read_only) : null;
+  const argsPanel = useRef(null);
+  const chooseSuggested = () => {
+    pick(suggested);
+    setTimeout(() => argsPanel.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
+  };
+  const runTrial = () => {
+    setPickedTool(trial.name);
+    setArgsText(JSON.stringify(trial.default_args || {}, null, 2));
+    setFormError(null);
+    setMode("call");
+    start({ server_url: url.trim(), tool_name: trial.name, arguments: trial.default_args || {}, use_llm: true, auth: authBlock() });
+  };
+
   const clear = () => {
     reset();
     setPickedTool(null);
@@ -239,6 +254,30 @@ export default function TestLivePage({ health }) {
                 </div>
               </div>
 
+              <div className="panel">
+                <div className="panel-title">Next: run a tool through the full pipeline</div>
+                <p className="muted" style={{ margin: "0 0 12px", fontSize: "var(--fs-sm)" }}>
+                  So far Guardian has only read the descriptions. Calling a tool adds the policy gate, the check of the reply, the behaviour check and the final decision.
+                  {trial ? " This server has a tool that looks read-only, so Guardian can try it for you." : " Choose a tool below and set its arguments; Guardian only suggests a one-click run for tools that look read-only and need no input it would have to guess."}
+                </p>
+                {suggested && (
+                  <div className="row">
+                    <button type="button" className="btn primary" onClick={chooseSuggested} disabled={running}>
+                      Set up <code style={{ marginLeft: 4 }}>{suggested.name}</code> <Arrow />
+                    </button>
+                    <span className="muted" style={{ fontSize: "var(--fs-xs)" }}>Looks read-only but needs an input only you can give. Fill in its arguments, then run it.</span>
+                  </div>
+                )}
+                {trial && (
+                  <div className="row">
+                    <button type="button" className="btn primary" onClick={runTrial} disabled={running}>
+                      {running && mode === "call" ? <><span className="spinner" /> Running</> : <><Play /> Run the full pipeline on <code style={{ marginLeft: 4 }}>{trial.name}</code></>}
+                    </button>
+                    <span className="muted" style={{ fontSize: "var(--fs-xs)" }}>Looks read-only and needs no guessed input. The call still goes through the policy gate first.</span>
+                  </div>
+                )}
+              </div>
+
               {inspected.detail.not_inspected?.length > 0 && (
                 <div className="notice warn">
                   This server offers {tools.length + inspected.detail.not_inspected.length} tools. To keep runs affordable only {tools.length} were inspected.
@@ -266,7 +305,7 @@ export default function TestLivePage({ health }) {
           )}
 
           {tools && pickedTool && (
-            <div className="panel">
+            <div className="panel" ref={argsPanel}>
               <div className="panel-title">Run <code>{pickedTool}</code> through the full pipeline</div>
               <label className="field">
                 <span>Arguments (JSON)</span>

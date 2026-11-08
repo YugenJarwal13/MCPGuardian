@@ -37,6 +37,7 @@ from src.api.servers import (
     get_spec,
     list_all_tools,
     open_session,
+    safe_to_try,
 )
 from src.crewai_layer.crew import llm_available
 from src.evaluation.ablation_config import AblationConfig
@@ -313,6 +314,8 @@ class _Run:
             s_meta = interceptor.models.get(tool, {}).get("static", {})
             others = sorted(n for n, v in interceptor._static.items()
                             if n != tool and v.verdict != "clean")
+            annotations = {_tool_fields(t)[0]: getattr(t, "annotations", None) or
+                           (t.get("annotations") if isinstance(t, dict) else None) for t in _iter_tools(listed)}
             all_tools = [{"name": n, "verdict": v.verdict, "confidence": v.confidence,
                           "reasoning": v.reasoning, "flagged_phrases": v.flagged_phrases,
                           "engine": interceptor.engines.get(n, {}).get("static"),
@@ -320,6 +323,12 @@ class _Run:
                           "scope": interceptor._scope.get(n),
                           "definition_changed": n in interceptor.definition_changes,
                           "default_args": default_args_from_schema(tools[n][2]),
+                          "looks_read_only": bool(spec.url) and safe_to_try(
+                              n, tools[n][2], annotations.get(n), v.verdict, interceptor._scope.get(n),
+                              n in interceptor.definition_changes, needs_no_input=False),
+                          "safe_to_try": bool(spec.url) and safe_to_try(
+                              n, tools[n][2], annotations.get(n), v.verdict, interceptor._scope.get(n),
+                              n in interceptor.definition_changes),
                           "description": tools[n][1]} for n, v in interceptor._static.items()]
             change = interceptor.definition_changes.get(tool)
             detail = _verdict_detail(sv, meta=s_meta, description=tools[tool][1],

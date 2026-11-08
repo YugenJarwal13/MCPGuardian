@@ -243,3 +243,17 @@ def test_wrong_token_is_reported_as_rejected(client, mcp_base):
     err = next(e for e in evs if e["stage"] == "connect" and e["status"] == "error")
     assert "rejected the credentials" in err["message"]
     assert "wrong-token" not in str(evs)
+
+
+def test_one_click_pipeline_is_offered_only_for_read_only_looking_tools():
+    from src.api.servers import safe_to_try as ok
+    plain = {"type": "object", "properties": {"q": {"type": "string"}}}
+    assert ok("search_docs", plain, None, "clean", None, False)
+    assert ok("anything", plain, {"readOnlyHint": True}, "clean", None, False)
+    assert not ok("delete_issue", plain, {"readOnlyHint": True}, "clean", None, False)     # a write word wins
+    assert not ok("get_thing", plain, None, "suspicious", None, False)
+    assert not ok("get_thing", plain, None, "clean", "network_egress", False)
+    assert not ok("get_thing", plain, None, "clean", None, True)
+    assert not ok("get_thing", {"required": ["q"], "properties": {"q": {"type": "string"}}}, None, "clean", None, False)
+    assert ok("get_thing", {"required": ["q"], "properties": {"q": {"enum": ["a", "b"]}}}, None, "clean", None, False)
+    assert not ok("sync", plain, None, "clean", None, False)                                # no read signal at all
