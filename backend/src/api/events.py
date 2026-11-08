@@ -17,7 +17,7 @@ from opentelemetry import context as otel_context
 from opentelemetry import trace
 
 from src.audit import log_decision
-from src.observability import clip, tracer
+from src.observability import clip, send_scores, security_scores, tracer
 
 Stage = Literal["connect", "list_tools", "static_check", "tool_call", "runtime_check",
                 "behavioral_check", "a2a_hop", "enforcement", "done"]
@@ -54,7 +54,10 @@ class EventEmitter:
         self._stage_start: dict[str, float] = {}
         # one trace per run: a root span, plus one child span per stage while that stage is open
         self._root = tracer().start_span("guardian.run", attributes={
-            "guardian.run_id": run_id, "guardian.server_id": server_id})
+            "guardian.run_id": run_id, "guardian.server_id": server_id,
+            "langfuse.trace.name": "guardian.run", "langfuse.trace.tags": ["mcp-guardian", server_id[:60]],
+            "langfuse.session.id": run_id, "input.value": f"Guardian run on {server_id}"})
+        self._summary: dict[str, dict] = {}      # stage -> outcome, turned into Langfuse scores at the end
         self.trace_id = f"{self._root.get_span_context().trace_id:032x}"
         self._root_ctx = trace.set_span_in_context(self._root)
         self._spans: dict[str, tuple[Any, Any]] = {}      # stage -> (span, context token)
@@ -76,13 +79,16 @@ class EventEmitter:
         if pair is None:
             return
         span, token = pair
+        self._summary[stage] = {"status": status, "engine": engine, "confidence": detail.get("confidence"),
+                                "reasoning": detail.get("reasoning")}
         span.set_attribute("guardian.status", status)
         span.set_attribute("guardian.engine", engine)
         span.set_attribute("output.value", clip(message))
         span.set_attribute("guardian.elapsed_ms", elapsed)
         if mm.get("model"):
-            span.set_attribute("gen_ai.request.model", mm["model"])
-            span.set_attribute("gen_ai.system", mm.get("provider") or "")
+            # not gen_ai.*: those make Langfuse classify the stage as a model call; the real calls are llm.complete
+            span.set_attribute("guardian.model", mm["model"])
+            span.set_attribute("guardian.provider", mm.get("provider") or "")
         for key in ("verdict", "confidence", "requested_scope", "z_score", "case_id", "final_decision"):
             if detail.get(key) is not None:
                 span.set_attribute(f"guardian.{key}", detail[key] if isinstance(detail[key], (int, float)) else str(detail[key]))
@@ -128,6 +134,12 @@ class EventEmitter:
             self._root.set_attribute("guardian.final_status", status)
             self._root.set_attribute("guardian.final_decision", str((detail or {}).get("final_decision", "")))
             self._root.set_attribute("output.value", clip(message))
+            d = detail or {}
+            tools = d.get("tools") or []
+            send_scores(self.trace_id, security_scores(self._summary, {
+                "status": status, "decision": d.get("final_decision"),
+                "total": len(tools) if d.get("inspect_only") else None,
+                "flagged": sum(1 for t in tools if t.get("verdict") != "clean")}))
         event = PipelineEvent(run_id=self.run_id, stage=stage, status=status, message=message,
                               detail=detail or {}, engine=engine, trace_id=self.trace_id, provider=mm.get("provider"),
                               model=mm.get("model"), elapsed_ms=round(elapsed, 2))

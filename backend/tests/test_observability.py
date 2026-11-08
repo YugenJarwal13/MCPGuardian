@@ -78,3 +78,52 @@ def test_callbacks_write_to_audit_trail_and_never_raise(tmp_path, monkeypatch):
     assert ("crewai_callback", "task_finished") in events
     assert ("error", "crewai_error") in events
     assert ("adk_callback", "after_model") in events and ("error", "adk_model_error") in events
+
+
+def _fake_chain(tmp_path, cost):
+    from src.llm_chain import ChainLLM, Slot
+
+    def transport(slot, payload, timeout):
+        text = json.dumps({"verdict": "clean", "confidence": 0.9, "reasoning": "ok", "flagged_phrases": []})
+        usage = {"prompt_tokens": 11, "completion_tokens": 5, **({"cost": cost} if cost is not None else {})}
+        return 200, {}, {"choices": [{"message": {"content": text}}], "usage": usage}
+
+    return ChainLLM(slots=[Slot("openrouter", "vendor/model-x", "response_format")], transport=transport,
+                    rpm=6000, use_cache=True, cache_path=tmp_path / "cache.jsonl")
+
+
+def test_model_call_is_a_langfuse_generation_with_model_usage_and_cost(tmp_path):
+    path = tmp_path / "t.jsonl"
+    provider = init_tracing(path=path, force=True)
+    chain = _fake_chain(tmp_path, cost=0.00042)
+    chain.complete("system prompt", "user prompt")
+    chain.complete("system prompt", "user prompt")          # second call is served from the cache
+    provider.force_flush()
+    first, second = [s for s in _spans(path) if s["name"] == "llm.complete"]
+    a = first["attributes"]
+    assert a["langfuse.observation.type"] == "generation"
+    assert a["langfuse.observation.model.name"] == "vendor/model-x"
+    assert json.loads(a["langfuse.observation.usage_details"]) == {"input": 11, "output": 5, "total": 16}
+    assert json.loads(a["langfuse.observation.cost_details"]) == {"total": 0.00042}
+    assert "system prompt" in a["input.value"] and "user prompt" in a["input.value"]
+    b = second["attributes"]                                 # a cache hit books no model usage and no cost
+    assert b["guardian.cached"] is True and "langfuse.observation.type" not in b
+    assert "langfuse.observation.usage_details" not in b and "langfuse.observation.cost_details" not in b
+    import src.observability as obs
+    obs._PROVIDER = None
+
+
+def test_security_scores_describe_the_run():
+    from src.observability import security_scores
+
+    stages = {"static_check": {"status": "flagged", "engine": "llm", "reasoning": "hidden order"},
+              "runtime_check": {"status": "flagged", "engine": "heuristic_fallback",
+                                "reasoning": "Credential scan: the response contains JSON web token"},
+              "behavioral_check": {"status": "passed", "engine": "none"}}
+    got = {s["name"]: s for s in security_scores(stages, {"status": "blocked", "decision": "block"})}
+    assert got["guardian.decision"]["value"] == "block" and got["guardian.risk"]["value"] == 1.0
+    assert got["guardian.static_flagged"]["value"] == 1 and got["guardian.behavioral_flagged"]["value"] == 0
+    assert got["guardian.credential_leak"]["value"] == 1
+    assert got["guardian.llm_coverage"]["value"] == 0.5          # one of two inspection stages used the model
+    insp = {s["name"]: s["value"] for s in security_scores({}, {"status": "passed", "decision": None, "total": 3, "flagged": 0})}
+    assert insp == {"guardian.decision": "inspection_clean", "guardian.risk": 0.0}

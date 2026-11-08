@@ -291,26 +291,43 @@ class ChainLLM:
         from src.observability import clip, tracer
 
         with tracer().start_as_current_span("llm.complete") as span:
-            span.set_attribute("input.value", clip(user, 600))
+            span.set_attribute("input.value", clip([{"role": "system", "content": system},
+                                                    {"role": "user", "content": user}], 6000))
             try:
                 verdict, meta = self._complete(system, user, extra_key)
             except Exception as exc:
                 span.record_exception(exc)
                 span.set_attribute("guardian.llm_error", clip(str(exc), 400))
+                span.set_attribute("langfuse.observation.level", "ERROR")
+                span.set_attribute("langfuse.observation.status_message", clip(str(exc), 300))
                 raise
+            cached = bool(meta.get("cached"))
             span.set_attribute("gen_ai.system", meta.get("provider") or "")
             span.set_attribute("gen_ai.request.model", meta.get("model") or "")
             span.set_attribute("guardian.method", meta.get("method") or "")
-            span.set_attribute("guardian.cached", bool(meta.get("cached")))
+            span.set_attribute("guardian.cached", cached)
             if meta.get("latency_ms") is not None:
                 span.set_attribute("guardian.model_latency_ms", meta["latency_ms"])
-            tokens = meta.get("tokens") or {}
-            if tokens.get("prompt") is not None:
-                span.set_attribute("gen_ai.usage.input_tokens", tokens["prompt"])
-            if tokens.get("completion") is not None:
-                span.set_attribute("gen_ai.usage.output_tokens", tokens["completion"])
             span.set_attribute("guardian.slots_tried", clip(meta.get("slots_tried") or []))
-            span.set_attribute("output.value", clip(verdict))
+            span.set_attribute("output.value", clip(verdict, 4000))
+            if cached:
+                # served from the local answer cache: no model was called, so no tokens and no cost are booked
+                span.set_attribute("langfuse.observation.status_message", "served from cache")
+                return verdict, meta
+            tokens = meta.get("tokens") or {}
+            usage = {k: int(v) for k, v in (("input", tokens.get("prompt")), ("output", tokens.get("completion")))
+                     if v is not None}
+            span.set_attribute("langfuse.observation.type", "generation")
+            span.set_attribute("langfuse.observation.model.name", meta.get("model") or "")
+            span.set_attribute("langfuse.observation.model.parameters",
+                               json.dumps({"temperature": 0, "max_tokens": self.max_tokens, "method": meta.get("method")}))
+            if usage:
+                span.set_attribute("gen_ai.usage.input_tokens", usage.get("input", 0))
+                span.set_attribute("gen_ai.usage.output_tokens", usage.get("output", 0))
+                span.set_attribute("langfuse.observation.usage_details",
+                                   json.dumps({**usage, "total": sum(usage.values())}))
+            if meta.get("cost_usd") is not None:       # the provider's own figure; $0 for free-tier models
+                span.set_attribute("langfuse.observation.cost_details", json.dumps({"total": float(meta["cost_usd"])}))
             return verdict, meta
 
     def _complete(self, system: str, user: str, extra_key: str = "") -> tuple[dict, dict]:
@@ -362,6 +379,7 @@ class ChainLLM:
                         "latency_ms": round(elapsed, 1), "attempts": attempts,
                         "tokens": {"prompt": usage.get("prompt_tokens") or data.get("prompt_eval_count"),
                                    "completion": usage.get("completion_tokens") or data.get("eval_count")},
+                        "cost_usd": usage.get("cost") if isinstance(usage.get("cost"), (int, float)) else None,
                         "served_by": data.get("provider")}
                 tried.append(f"{slot.label}: unparseable output")
                 continue
@@ -436,6 +454,7 @@ class ChainLLM:
         body: dict[str, Any] = {
             "model": slot.model, "temperature": 0, "max_tokens": self.max_tokens,
             "reasoning": {"effort": "low"},
+            "usage": {"include": True},           # OpenRouter then reports the cost of the call
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
         if slot.method == "response_format":
             body["response_format"] = {"type": "json_schema", "json_schema": {

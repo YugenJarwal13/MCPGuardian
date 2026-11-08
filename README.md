@@ -127,7 +127,12 @@ bash scripts/run_full_local_eval.sh                  # all cases with a local Ol
 
 - **Tracing:** every run is one OpenTelemetry trace (a span per stage and per model call), written to
   `backend/logs/traces.jsonl`. Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` and optionally `LANGFUSE_HOST` to send
-  traces to [Langfuse](https://langfuse.com). The trace id appears in the live console.
+  traces to [Langfuse](https://langfuse.com) (`LANGFUSE_BASE_URL` also works). The trace id appears in the live console.
+  In Langfuse each model call is a *generation* with its model, input and output messages, token usage and the cost
+  the provider reports (free-tier models report $0, so $0.00 is the real figure). Each run also gets **scores**:
+  `guardian.decision`, `guardian.risk` (block 1, escalate 0.5, allow 0), per-layer flags (`static`, `runtime`,
+  `behavioral`), `guardian.credential_leak`, and `guardian.llm_coverage` (the share of inspection answered by the
+  model rather than the regex fallback). Answers served from the local cache book no tokens and no cost.
 - **Callbacks:** CrewAI step/task callbacks and ADK agent, model and tool callbacks write intermediate outputs and
   errors to `backend/logs/audit_trail.jsonl` (`backend/src/monitoring.py`). `streamlit run backend/src/dashboard/app.py`
   browses the audit trail.

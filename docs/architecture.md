@@ -96,7 +96,8 @@ pipeline of inspection agents before the caller ever sees the result.
   AI-inspector budget is capped.
 * **Observability and provenance.** `backend/src/observability.py`: OpenTelemetry traces, one trace per run, a span
   per stage and per model call (model, tokens, latency, cache hit), written to `logs/traces.jsonl` and optionally
-  exported to Langfuse (`LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST`) or any OTLP endpoint. Google
+  exported to Langfuse (`LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` or `LANGFUSE_BASE_URL`) or any OTLP endpoint. Model calls are exported as Langfuse generations (model,
+  messages, tokens, provider cost) and every run is scored (decision, risk, per-layer flags, credential leak, LLM coverage). Google
   ADK's own spans land in the same provider. The trace id is carried on every event, in the audit trail and in the
   live console.
 * **Evaluation and cost.** `docs/evaluation_report.md` (accuracy) and `docs/cost_and_runtime.md` (tokens, time, money).
