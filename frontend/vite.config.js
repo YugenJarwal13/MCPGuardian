@@ -13,6 +13,7 @@ export default defineConfig({
       "/servers": api,
       "/health": api,
       "/oauth": api,
+      "/probe": api,
       "/ws": { target: api.replace(/^http/, "ws"), ws: true },
     },
   },

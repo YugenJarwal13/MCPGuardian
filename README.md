@@ -60,10 +60,10 @@ On macOS/Linux run the same commands by hand: `cd backend && python -m uvicorn s
 | Page | What it does |
 |---|---|
 | **Overview** | The problem, how Guardian works, the evaluation results, the datasets and the limitations. |
-| **Live demo** | Pick a DVMCP or fixture server and run one tool call. An animated diagram follows the call through every check, with a plain-English narration, the backend event log and the without/with-Guardian comparison. Approvals appear inline. |
-| **Check a server** | Paste the URL of any public MCP server (SSE or streamable HTTP). Guardian reads every tool it offers with its LLM inspectors and reports which ones carry hidden instructions. You can then run one tool through the full pipeline. |
+| **Live demo** | Four numbered sections: select a scenario (ten DVMCP attacks, offline stand-ins, clean references), configure the tool and inspector model, execute the pipeline (animated diagram, narration, backend log, inline approvals) and review the results (verdict, without/with-Guardian comparison, every stage). |
+| **Check a server** | A guided flow of dialogs: enter the URL → Guardian probes the server and asks for authentication only if it needs it → connects and inspects every tool → an inspection summary → choose a tool and the inspector model → run the full pipeline → results. Works with any MCP server reachable over streamable HTTP or SSE. |
 
-Both live pages use the LLM pipeline only. Not supported yet: stdio servers, custom sign-in flows, MCP resources and
+Both live pages use the LLM pipeline only and share an **Auto-follow** switch (on by default) that scrolls to the next section when a step finishes. Not supported yet: stdio servers, custom sign-in flows, MCP resources and
 prompts (only tools are inspected), and multi-call sessions.
 
 **Servers that need a login.** Open *Authentication* on the Check page and choose one of:

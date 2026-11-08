@@ -37,6 +37,7 @@ import json
 import logging
 import os
 import re
+import contextvars
 import threading
 import time
 from dataclasses import dataclass, field
@@ -257,6 +258,10 @@ class _Cache:
 Transport = Callable[[Slot, dict, float], tuple[int, dict, dict]]   # -> (status, headers, json)
 
 
+# The model a visitor picked for this run (set by the API for the duration of one run; copied into worker threads).
+PREFERRED_MODEL: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("guardian_preferred_model", default=None)
+
+
 class ChainLLM:
     def __init__(self, slots: Optional[list[Slot]] = None, transport: Optional[Transport] = None,
                  rpm: Optional[float] = None, timeout_s: float = 150.0,
@@ -331,13 +336,15 @@ class ChainLLM:
             return verdict, meta
 
     def _complete(self, system: str, user: str, extra_key: str = "") -> tuple[dict, dict]:
-        key = hashlib.sha256(json.dumps([system, user, extra_key, self.chain_id]).encode()).hexdigest()
+        preferred = PREFERRED_MODEL.get()
+        key = hashlib.sha256(json.dumps([system, user, extra_key, self.chain_id, preferred]).encode()).hexdigest()
         if self._cache is not None:
             hit = self._cache.get(key)
             if hit:
                 return hit["verdict"], {**hit["meta"], "cached": True}
         tried: list[str] = []
-        for slot in self.slots:
+        ordered = sorted(self.slots, key=lambda sl: sl.model != preferred) if preferred else self.slots
+        for slot in ordered:
             if slot.provider == "openrouter" and time.monotonic() < self.free_tier_exhausted_until:
                 tried.append(f"{slot.label}: free-tier daily quota exhausted")
                 continue

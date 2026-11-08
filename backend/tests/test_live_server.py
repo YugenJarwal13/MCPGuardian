@@ -257,3 +257,34 @@ def test_one_click_pipeline_is_offered_only_for_read_only_looking_tools():
     assert not ok("get_thing", {"required": ["q"], "properties": {"q": {"type": "string"}}}, None, "clean", None, False)
     assert ok("get_thing", {"required": ["q"], "properties": {"q": {"enum": ["a", "b"]}}}, None, "clean", None, False)
     assert not ok("sync", plain, None, "clean", None, False)                                # no read signal at all
+
+
+def test_probe_endpoint_reports_auth_requirements_before_any_run(client, mcp_base, monkeypatch):
+    body = client.post("/probe", json={"url": mcp_base}).json()
+    assert body["ok"] and body["auth_required"] is True and body["transport"] is None
+    assert client.post("/probe", json={"url": "ftp://x.test/mcp"}).status_code == 400
+    assert client.post("/probe", json={"url": "http://127.0.0.1:1/mcp"}).json()["ok"] is False
+    monkeypatch.setenv("GUARDIAN_PUBLIC", "1")
+    assert client.post("/probe", json={"url": mcp_base}).status_code == 400          # internal address in public mode
+
+
+def test_chosen_model_is_tried_first_and_unknown_models_are_refused(client, mcp_base, monkeypatch):
+    from src.llm_chain import PREFERRED_MODEL, ChainLLM, Slot
+    import json as _json
+    seen = []
+
+    def transport(slot, payload, timeout):
+        seen.append(slot.model)
+        text = _json.dumps({"verdict": "clean", "confidence": 0.9, "reasoning": "ok", "flagged_phrases": []})
+        return 200, {}, {"choices": [{"message": {"content": text}}], "usage": {}}
+
+    chain = ChainLLM(slots=[Slot("openrouter", "m-a", "response_format"), Slot("openrouter", "m-b", "response_format")],
+                     transport=transport, rpm=6000, use_cache=False)
+    token = PREFERRED_MODEL.set("m-b")
+    try:
+        chain.complete("s", "u")
+    finally:
+        PREFERRED_MODEL.reset(token)
+    assert seen == ["m-b"]
+    evs = _run_ws(client, {"server_id": "demo-clean", "use_llm": False, "model": "not-a-configured-model"})
+    assert evs[0]["detail"]["guard"] == "model"

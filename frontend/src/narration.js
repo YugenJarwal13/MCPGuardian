@@ -75,6 +75,7 @@ export function narrate(fold, last) {
       return mk("The tool answered", "The server replied. Guardian is holding that reply. The agent has not seen it yet.", "ok");
     case "runtime_check":
       if (st === "started") return mk("Inspector 2 reads the answer", "A second CrewAI agent, the “Response Auditor”, reads the reply. Facts and data are fine; commands hidden inside the data are not.");
+      if (st === "flagged" && /^Credential scan/.test(d.reasoning || "")) return mk("The answer leaks credentials", `${d.reasoning} The values are masked here; the agent never receives them unless a human approves.`, "bad");
       if (st === "flagged") return mk("A command was hiding in the answer", `${d.reasoning || last.message}`, "bad");
       return mk("The answer is ordinary data", d.reasoning ? `${q(d.reasoning, 200)}` : "No injected instruction found in the response.", "ok");
     case "behavioral_check":

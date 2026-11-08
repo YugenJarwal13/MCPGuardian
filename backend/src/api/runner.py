@@ -22,7 +22,7 @@ import asyncio
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 
 from src.adk_layer.callbacks.enforcement_callbacks import GuardianDecision
 from src.adk_layer.state.tool_fingerprint_store import ToolFingerprintStore
@@ -306,8 +306,11 @@ class _Run:
                                   interceptor.engines.get(name, {}).get("static", "none"), meta)
 
             cap = _max_tools() if spec.url else None
+            to_screen = listed
+            if spec.url and not self.inspect_only:        # the inspection step already read every tool
+                to_screen = [t for t in _iter_tools(listed) if _tool_fields(t)[0] == tool]
             await interceptor.screen_tool_metadata(
-                listed, on_tool=static_progress, limit=cap, first=tool,
+                to_screen, on_tool=static_progress, limit=cap, first=tool,
                 workers=STATIC_WORKERS if use_llm else 1)
             skipped = interceptor.not_inspected
             sv = interceptor._static[tool]
@@ -399,7 +402,9 @@ class _Run:
                 await em.emit(
                     "runtime_check", "passed" if rv.verdict == "clean" else "flagged",
                     "Response looks like ordinary data ✓" if rv.verdict == "clean"
-                    else f"Injected instruction detected ({rv.verdict})!",
+                    else (f"Credentials leaked in the response ({rv.verdict})!"
+                          if (rv.reasoning or "").startswith("Credential scan")
+                          else f"Injected instruction detected ({rv.verdict})!"),
                     _verdict_detail(rv, meta=r_meta, inspector_latency_ms=round(r_ms, 2),
                                     response_preview=_preview(text)), r_engine, r_meta)
 
@@ -520,6 +525,32 @@ async def _admit(ws: WebSocket, req: dict, client: str) -> tuple[bool, str | Non
     return True, restrict_execution(req)
 
 
+@router.post("/probe", dependencies=[Depends(access.require_access)])
+async def probe(body: dict, request: Request) -> dict:
+    """What does this MCP endpoint speak, and does it want credentials? Called before a run so the page only
+    asks for authentication once the server's own requirements are known. Nothing is inspected or executed."""
+    url = str((body or {}).get("url") or "").strip()
+    client = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "unknown")
+    res = check_url(url)
+    if not res.ok:
+        raise HTTPException(400, f"Input rejected by the input guard: {res.reason}.")
+    try:
+        custom_spec(url)
+    except CustomServerError as exc:
+        raise HTTPException(400, str(exc)) from None
+    if public_mode():
+        err = await asyncio.to_thread(check_public_target, url)
+        if err:
+            raise HTTPException(400, err)
+        if not limiter().probe_allowed(client):
+            raise HTTPException(429, "Too many checks from this address. Please try again later.")
+    result = await live.probe_endpoint(url, {})
+    if result.error:
+        return {"ok": False, "error": result.error}
+    return {"ok": True, "host": live.display_url(url).split("//", 1)[-1].split("/", 1)[0], "transport": result.transport,
+            "auth_required": result.auth_required, "oauth_advertised": result.oauth_advertised}
+
+
 @router.websocket("/ws/run")
 async def ws_run(ws: WebSocket) -> None:
     if not origin_allowed(ws.headers.get("origin"), ws.headers.get("host")):
@@ -541,6 +572,15 @@ async def ws_run(ws: WebSocket) -> None:
                 access.record_failure(client)
                 await _reject(ws, "A valid access key is required to run checks on this site.", "auth", client)
                 return
+        model = req.pop("model", None)
+        if model:
+            from src.crewai_layer.crew import uses_chain
+            from src.llm_chain import PREFERRED_MODEL, get_chain
+
+            if not (uses_chain() and model in {sl.model for sl in get_chain().slots}):
+                await _reject(ws, "That model is not one of the configured inspector models.", "model", client)
+                return
+            PREFERRED_MODEL.set(model)
         admitted, notice = await _admit(ws, req, client)
         if not admitted:
             return

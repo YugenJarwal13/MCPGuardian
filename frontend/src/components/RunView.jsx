@@ -68,29 +68,46 @@ function Compare({ fold, done }) {
   );
 }
 
-/** Everything a run shows: animation, plain-English narration, decision, backend console, technical cards. */
-export default function RunView({ events, running, onApprove, serverName, notRun = [], showCompare = true }) {
+/**
+ * Everything a run shows: animation, plain-English narration, decision, backend console, technical cards.
+ * `part` splits it for pages that present the run in two sections: "live" (animation, narration, approval,
+ * console) and "results" (verdict, comparison, drift, stage details). The default shows both.
+ */
+export default function RunView({ events, running, onApprove, serverName, notRun = [], showCompare = true, part = "all" }) {
   const fold = foldEvents(events);
   const done = [...events].reverse().find((e) => e.stage === "done");
+  const live = part !== "results";
+  const results = part !== "live";
   return (
     <div className="stack-lg flush">
-      <PipelineScene events={events} serverName={serverName} notRun={notRun} />
-      <div className="cols-2">
-        <div className="stack-lg flush">
-          <SceneNarration events={events} />
-          <ApprovalPanel fold={fold} onApprove={onApprove} />
-          {done && <VerdictBanner done={done} />}
-        </div>
-        <ConsolePanel events={events} running={running} />
-      </div>
-      {done && showCompare && <Compare fold={fold} done={done} />}
-      {fold.behavioral_check.detail?.history && !fold.behavioral_check.detail?.skipped && (
-        <DriftPanel detail={fold.behavioral_check.detail} flagged={fold.behavioral_check.status === "flagged"} />
+      {live && (
+        <>
+          <PipelineScene events={events} serverName={serverName} notRun={notRun} />
+          <div className="cols-2">
+            <div className="stack-lg flush">
+              <SceneNarration events={events} />
+              <ApprovalPanel fold={fold} onApprove={onApprove} />
+              {part === "all" && done && <VerdictBanner done={done} />}
+            </div>
+            <ConsolePanel events={events} running={running} />
+          </div>
+        </>
       )}
-      <details className="under-hood">
-        <summary>Under the hood: every stage in detail</summary>
-        <div><PipelineView events={events} onApprove={onApprove} notRun={notRun} /></div>
-      </details>
+      {results && (
+        <>
+          {part === "results" && done && <VerdictBanner done={done} />}
+          {done && showCompare && <Compare fold={fold} done={done} />}
+          {fold.behavioral_check.detail?.history && !fold.behavioral_check.detail?.skipped && (
+            <DriftPanel detail={fold.behavioral_check.detail} flagged={fold.behavioral_check.status === "flagged"} />
+          )}
+          {events.length > 0 && (
+            <details className="under-hood">
+              <summary>Under the hood: every stage in detail</summary>
+              <div><PipelineView events={events} onApprove={onApprove} notRun={notRun} /></div>
+            </details>
+          )}
+        </>
+      )}
     </div>
   );
 }

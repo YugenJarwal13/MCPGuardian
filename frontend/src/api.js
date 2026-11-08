@@ -39,6 +39,23 @@ export const fetchTools = (serverId) => getJSON(`/servers/${serverId}/tools`);
 export const resetServer = (serverId) =>
   fetch(`${BASE}/servers/${serverId}/reset`, { method: "POST", headers: authHeaders() });
 
+/** Ask an MCP endpoint what it speaks and whether it wants credentials, before any run starts. */
+export async function probeServer(url) {
+  const res = await fetch(`${BASE}/probe`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ url }),
+  });
+  let body = {};
+  try {
+    body = await res.json();
+  } catch {
+    /* not JSON */
+  }
+  if (!res.ok) throw new Error(body.detail || res.statusText || "The check could not be started.");
+  return body;
+}
+
 function wsUrl(path) {
   if (BASE) return BASE.replace(/^http/, "ws") + path;
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";

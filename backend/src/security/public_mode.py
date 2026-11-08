@@ -85,6 +85,7 @@ class RunLimiter:
         self.per_hour, self.concurrent, self.llm_per_day = per_hour, concurrent, llm_runs_per_day
         self._hits: dict[str, deque] = defaultdict(deque)
         self._active: dict[str, int] = defaultdict(int)
+        self._probes: dict[str, deque] = defaultdict(deque)
         self._llm_day = ""
         self._llm_used = 0
         self._lock = threading.Lock()
@@ -107,6 +108,18 @@ class RunLimiter:
     def release(self, client: str) -> None:
         with self._lock:
             self._active[client] = max(0, self._active[client] - 1)
+
+    def probe_allowed(self, client: str, per_hour: int = 40) -> bool:
+        """A separate, more generous limit for the cheap "what does this server need?" probe."""
+        now = time.time()
+        with self._lock:
+            hits = self._probes[client]
+            while hits and now - hits[0] > 3600:
+                hits.popleft()
+            if len(hits) >= per_hour:
+                return False
+            hits.append(now)
+            return True
 
     def take_llm_run(self) -> bool:
         """True while today's AI-inspector budget lasts (resets at 00:00 UTC, like the provider's quota)."""

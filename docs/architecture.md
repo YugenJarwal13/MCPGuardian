@@ -112,3 +112,12 @@ then pinned: the host name is resolved once, all answers must be public addresse
 exact IP (the `Host` header and TLS server name keep the original name). A DNS answer that changes afterwards
 cannot steer the connection to an internal address, which closes DNS rebinding. Credentials never reach events, traces or the audit trail:
 `EventEmitter.scrub` redacts them before anything is logged or sent.
+
+## Credential leaks in responses
+
+The runtime inspector looks for instructions hidden in a reply. A reply that only *contains* a secret (an API key, a
+signed token, a private key) has no instruction in it, so it passed as ordinary data: this is how the DVMCP Token Theft
+challenge was allowed. `security/secret_scan.py` closes that gap deterministically. A reply carrying credential-like
+values is raised to `suspicious` (policy: a human decides) and the values are masked in events, logs and the UI.
+It runs in the live gateway only, so the published benchmark numbers are unchanged. It is a safety net, not a data-loss
+prevention product; it also does not inspect MCP resources or prompts, where DVMCP's prompt-injection challenge lives.
