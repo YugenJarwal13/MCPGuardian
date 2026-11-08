@@ -106,7 +106,8 @@ pipeline of inspection agents before the caller ever sees the result.
 `backend/src/api/live_server.py` holds everything the Check page needs for a user-supplied endpoint: parsing and
 redacting credentials (bearer, header, query key, OAuth), an endpoint probe that picks streamable HTTP or SSE and
 detects a login requirement, and the OAuth authorisation-code flow driven through the browser (`/oauth/callback`).
-Every outgoing request, including each redirect hop and each OAuth discovery URL, goes through a client that
-re-checks the destination in public mode. It resolves the name itself, so a DNS answer that changes in the instant
-between check and connect is narrowed but not excluded. Credentials never reach events, traces or the audit trail:
+In public mode every outgoing request, including each redirect hop and each OAuth discovery URL, is validated and
+then pinned: the host name is resolved once, all answers must be public addresses, and the connection is made to that
+exact IP (the `Host` header and TLS server name keep the original name). A DNS answer that changes afterwards
+cannot steer the connection to an internal address, which closes DNS rebinding. Credentials never reach events, traces or the audit trail:
 `EventEmitter.scrub` redacts them before anything is logged or sent.

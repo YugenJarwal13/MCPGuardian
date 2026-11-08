@@ -17,3 +17,8 @@ class InspectionVerdict(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)   # 0.0-1.0
     reasoning: str                              # short human-readable justification (audit log)
     flagged_phrases: list[str] = []             # exact substrings that triggered suspicion
+
+
+
+
+        

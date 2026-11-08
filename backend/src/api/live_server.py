@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import secrets
+import socket
 import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Optional
@@ -20,7 +22,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 import httpx
 
-from src.security.public_mode import check_public_target, public_mode
+from src.security.public_mode import INTERNAL_MSG, check_public_target, public_mode
 
 AUTH_TYPES = ("none", "bearer", "header", "oauth")
 MAX_SECRET = 4096
@@ -131,21 +133,55 @@ class DestinationBlocked(httpx.RequestError):
     """A request (or a redirect hop) was refused because the target is not a public address."""
 
 
+def _resolve(name: str) -> list[str]:
+    return [i[4][0] for i in socket.getaddrinfo(name, None)]
+
+
+def _is_public(ip: str) -> bool:
+    return ipaddress.ip_address(ip).is_global
+
+
+def _literal(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return False
+
+
 async def _guard_request(request: httpx.Request) -> None:
+    """Public mode: validate the destination and connect to the very address that was validated.
+
+    The name is resolved once here; the request is then rewritten to that IP (``Host`` header and TLS server
+    name keep the original name), so a DNS answer that changes afterwards cannot redirect the connection to an
+    internal address (DNS rebinding). Runs for every redirect hop and every URL the OAuth flow discovers."""
     if not public_mode():
         return
-    err = await asyncio.to_thread(check_public_target, str(request.url))
-    if err:
-        raise DestinationBlocked(err, request=request)
+    host = request.url.host
+    name = host
+    if _literal(host):                    # either typed as an IP, or pinned by the previous hop of a redirect
+        header_host = request.headers.get("host", "").split(":")[0]
+        if header_host and header_host != host and not _literal(header_host):
+            name = header_host
+    try:
+        ips = [host] if _literal(name) else await asyncio.to_thread(_resolve, name)
+    except socket.gaierror:
+        raise DestinationBlocked("That host name could not be resolved.", request=request) from None
+    if not ips or not all(_is_public(ip) for ip in ips):
+        raise DestinationBlocked(INTERNAL_MSG, request=request)
+    if not _literal(name):
+        port = request.url.port
+        request.headers["Host"] = f"{name}:{port}" if port else name
+        request.extensions["sni_hostname"] = name
+        request.url = request.url.copy_with(host=ips[0])
 
 
 def guarded_client_factory(headers: dict[str, str] | None = None, timeout: httpx.Timeout | None = None,
                            auth: httpx.Auth | None = None) -> httpx.AsyncClient:
     """Drop-in for the MCP SDK's ``create_mcp_http_client`` that checks every hop's destination.
 
-    The check runs just before each request is sent, including each redirect hop and every URL the OAuth
-    flow discovers, so none of them can reach an internal address. It resolves the name itself, so a host
-    that changes its DNS answer in the instant between check and connect is not fully excluded."""
+    Each request is validated just before it is sent and pinned to the address that was validated (see
+    ``_guard_request``), including every redirect hop and every URL the OAuth flow discovers."""
     return httpx.AsyncClient(
         follow_redirects=True,
         max_redirects=5,

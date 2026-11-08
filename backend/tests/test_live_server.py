@@ -51,6 +51,8 @@ async def _app(scope, receive, send):
         if auth != "Bearer good":
             return await reply(401, extra=[(b"www-authenticate", b'Bearer resource_metadata="x"')])
         return await reply(200)
+    if path == "/host":
+        return await reply(200, b"text/plain", dict(scope["headers"]).get(b"host", b""))
     if path == "/open":
         return await reply(200)
     if path == "/sse" and method == "GET":
@@ -89,12 +91,40 @@ def test_probe_detects_auth_and_transports(base):
 
 def test_guarded_client_refuses_a_redirect_to_an_internal_address(base, monkeypatch):
     monkeypatch.setenv("GUARDIAN_PUBLIC", "1")
-    monkeypatch.setattr(pm, "check_public_target", lambda url: None if url.startswith(base) else pm.INTERNAL_MSG)
-    monkeypatch.setattr(live, "check_public_target", pm.check_public_target)
 
     async def go():
         async with live.guarded_client_factory() as c:
             await c.get(f"{base}/hop")
+
+    with pytest.raises(live.DestinationBlocked):          # 127.0.0.1 is not a public address
+        asyncio.run(go())
+
+
+def test_connection_is_pinned_to_the_address_that_was_validated(base, monkeypatch):
+    """DNS rebinding: the name answers once; the connection must use that answer, not resolve again."""
+    monkeypatch.setenv("GUARDIAN_PUBLIC", "1")
+    answers = iter([["127.0.0.1"], ["10.0.0.1"], ["10.0.0.1"]])
+    calls = []
+    monkeypatch.setattr(live, "_resolve", lambda name: calls.append(name) or next(answers))
+    monkeypatch.setattr(live, "_is_public", lambda ip: ip == "127.0.0.1")     # the first answer passes the check
+    port = base.rsplit(":", 1)[1]
+
+    async def go():
+        async with live.guarded_client_factory() as c:
+            r = await c.get(f"http://rebind.test:{port}/host")
+            return r.text
+
+    assert asyncio.run(go()) == f"rebind.test:{port}"      # reached the validated IP, Host header kept
+    assert calls == ["rebind.test"]                         # resolved exactly once
+
+
+def test_a_name_that_resolves_to_an_internal_address_is_refused(monkeypatch):
+    monkeypatch.setenv("GUARDIAN_PUBLIC", "1")
+    monkeypatch.setattr(live, "_resolve", lambda name: ["93.184.216.34", "10.0.0.5"])
+
+    async def go():
+        async with live.guarded_client_factory() as c:
+            await c.get("http://mixed.test/")
 
     with pytest.raises(live.DestinationBlocked):
         asyncio.run(go())
