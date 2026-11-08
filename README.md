@@ -77,7 +77,8 @@ Credentials are used for that check only and are removed from the event stream, 
 The endpoint's transport (streamable HTTP or SSE) is detected automatically, a 401 is explained instead of timing
 out, and tool lists that span several pages are read in full. Remote servers are capped at 40 tools per run in
 public mode and 150 locally (`GUARDIAN_MAX_TOOLS`); tools beyond the cap are listed as not inspected.
-For OAuth on a public deployment set `GUARDIAN_PUBLIC_URL` to the site's address. In public mode the run socket
+For OAuth on a public deployment set `GUARDIAN_PUBLIC_URL` to the site's address. Set `GUARDIAN_ACCESS_KEY` to require a shared access key for runs, tool listings and resets
+(the page then asks for it; too many wrong keys are throttled). In public mode the run socket
 refuses browser pages from other origins (`GUARDIAN_ALLOWED_ORIGINS` adds extra ones), and sign-in state is bounded in memory.
 
 Public servers that work without a login: DeepWiki `https://mcp.deepwiki.com/mcp`, Microsoft Learn

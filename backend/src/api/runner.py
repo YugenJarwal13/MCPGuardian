@@ -40,6 +40,7 @@ from src.api.servers import (
 )
 from src.crewai_layer.crew import llm_available
 from src.evaluation.ablation_config import AblationConfig
+from src.security import access
 from src.security.input_guard import check_arguments, check_url
 from src.security.public_mode import check_public_target, limiter, origin_allowed, public_mode, restrict_execution
 from src.mcp_gateway.interceptor import (
@@ -521,6 +522,15 @@ async def ws_run(ws: WebSocket) -> None:
         if not isinstance(req, dict):
             await _reject(ws, "Malformed request.", "shape", client)
             return
+        supplied = req.pop("access_key", None)          # never logged, never echoed
+        if access.access_required():
+            if access.throttled(client):
+                await _reject(ws, "Too many wrong access keys. Try again in a few minutes.", "auth", client)
+                return
+            if not access.key_ok(supplied):
+                access.record_failure(client)
+                await _reject(ws, "A valid access key is required to run checks on this site.", "auth", client)
+                return
         admitted, notice = await _admit(ws, req, client)
         if not admitted:
             return

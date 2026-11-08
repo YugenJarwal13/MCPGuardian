@@ -106,3 +106,22 @@ def test_public_mode_refuses_a_socket_from_a_foreign_origin(client, monkeypatch)
     assert not pm.origin_allowed("https://evil.example", "site.example")
     monkeypatch.setenv("GUARDIAN_ALLOWED_ORIGINS", "https://other.example/")
     assert pm.origin_allowed("https://other.example", "site.example")
+
+
+def test_access_key_gates_runs_and_http_actions(client, monkeypatch):
+    from src.security import access
+    monkeypatch.setenv("GUARDIAN_ACCESS_KEY", "s3cret-key")
+    access.reset()
+    assert client.get("/health").json()["access_required"] is True
+    assert client.get("/servers/demo-clean/tools").status_code == 401
+    assert client.get("/servers/demo-clean/tools", headers={"X-Access-Key": "s3cret-key"}).status_code == 200
+    assert client.post("/servers/demo-clean/reset").status_code == 401
+    bad = _run(client, {"server_id": "demo-clean", "use_llm": False, "access_key": "nope"})
+    assert bad[0]["detail"]["guard"] == "auth" and "s3cret-key" not in str(bad)
+    ok = _run(client, {"server_id": "demo-clean", "tool_name": "calculator",
+                       "arguments": {"expression": "2+2"}, "use_llm": False, "access_key": "s3cret-key"})
+    assert ok[-1]["stage"] == "done" and ok[-1]["status"] != "error"
+    for _ in range(9):
+        _run(client, {"server_id": "demo-clean", "access_key": "nope"})
+    assert "Too many" in _run(client, {"server_id": "demo-clean", "access_key": "nope"})[0]["message"]
+    access.reset()

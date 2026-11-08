@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import contextlib
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -22,6 +22,7 @@ from src.api.events import STAGES
 from src.config import REPO_ROOT, resolve_path
 from src.crewai_layer.crew import llm_available
 from src.observability import init_tracing
+from src.security.access import access_required, require_access
 
 
 @contextlib.asynccontextmanager
@@ -44,7 +45,7 @@ app = FastAPI(title="MCP Guardian live pipeline", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_methods=["*"], allow_headers=["*"],
+    allow_methods=["*"], allow_headers=["*"],   # X-Access-Key included
 )
 app.include_router(servers.router)
 app.include_router(runner.router)
@@ -66,7 +67,7 @@ def health() -> dict:
 
     pub = public_mode()
     return {"ok": True, "llm_available": available, "llm": llm, "a2a_url": app.state.a2a_url,
-            "stages": STAGES, "public_mode": pub,
+            "stages": STAGES, "public_mode": pub, "access_required": access_required(),
             "llm_runs_left_today": limiter().llm_runs_left() if pub else None,
             "tracing": {"file": True, "langfuse": langfuse_configured()}}
 
@@ -91,7 +92,7 @@ def oauth_callback(state: str = "", code: str | None = None, error: str | None =
         body="The check may have timed out. Go back to MCP Guardian and start it again."), status_code=400)
 
 
-@app.post("/servers/{server_id}/reset")
+@app.post("/servers/{server_id}/reset", dependencies=[Depends(require_access)])
 def reset_server(server_id: str) -> dict:
     """Forget a server's behavioural history (and fixture call counts)."""
     try:

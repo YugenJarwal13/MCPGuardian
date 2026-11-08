@@ -14,7 +14,9 @@ import socket
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Callable, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+
+from src.security.access import require_access
 
 from src.data.dvmcp_loader import CHALLENGE_MAP
 from src.demo_agent.agent_config import (
@@ -297,7 +299,7 @@ def list_servers() -> dict:
     return groups
 
 
-@router.get("/servers/{server_id}/tools")
+@router.get("/servers/{server_id}/tools", dependencies=[Depends(require_access)])
 async def list_server_tools(server_id: str) -> list[dict]:
     from src.mcp_gateway.interceptor import _iter_tools, _tool_fields
 
