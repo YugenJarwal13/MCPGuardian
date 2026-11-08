@@ -41,7 +41,7 @@ from src.api.servers import (
 from src.crewai_layer.crew import llm_available
 from src.evaluation.ablation_config import AblationConfig
 from src.security.input_guard import check_arguments, check_url
-from src.security.public_mode import check_public_target, limiter, public_mode, restrict_execution
+from src.security.public_mode import check_public_target, limiter, origin_allowed, public_mode, restrict_execution
 from src.mcp_gateway.interceptor import (
     GuardianInterceptor,
     _iter_tools,
@@ -511,6 +511,9 @@ async def _admit(ws: WebSocket, req: dict, client: str) -> tuple[bool, str | Non
 
 @router.websocket("/ws/run")
 async def ws_run(ws: WebSocket) -> None:
+    if not origin_allowed(ws.headers.get("origin"), ws.headers.get("host")):
+        await ws.close(code=1008)
+        return
     await ws.accept()
     client, acquired = _client_ip(ws), False
     try:

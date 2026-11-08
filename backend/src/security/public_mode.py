@@ -49,6 +49,19 @@ def check_public_target(url: str) -> str | None:
     return None
 
 
+def origin_allowed(origin: str | None, host: str | None) -> bool:
+    """Public mode only: a browser page may open the run socket only from this site or from an origin listed in
+    ``GUARDIAN_ALLOWED_ORIGINS`` (comma separated). Stops other websites from driving a visitor's session."""
+    if not public_mode():
+        return True
+    allowed = [o.strip().rstrip("/") for o in os.environ.get("GUARDIAN_ALLOWED_ORIGINS", "").split(",") if o.strip()]
+    if not origin:                       # browsers always send one; scripts and curl are not a cross-site risk
+        return True
+    if origin.rstrip("/") in allowed:
+        return True
+    return bool(host and urlparse(origin).netloc.lower() == host.lower())
+
+
 # DVMCP challenges whose tools do nothing dangerous when executed. Challenges 3-10 read files, touch
 # environment/state, or run commands by design; on a public host (which holds an API key in its
 # environment) they may only be INSPECTED, never called.

@@ -243,10 +243,16 @@ def _prune() -> None:
         _SESSIONS.pop(sid, None)
 
 
+MAX_SESSIONS = 200
+MAX_PENDING = 50
+
+
 def oauth_session_secret(session_id: Optional[str]) -> tuple[str, _Storage]:
     _prune()
     if session_id and session_id in _SESSIONS:
         return session_id, _SESSIONS[session_id]
+    while len(_SESSIONS) >= MAX_SESSIONS:             # bounded memory: drop the oldest sign-in
+        _SESSIONS.pop(min(_SESSIONS, key=lambda k: _SESSIONS[k].created))
     sid = secrets.token_urlsafe(24)
     _SESSIONS[sid] = _Storage()
     return sid, _SESSIONS[sid]
@@ -289,6 +295,8 @@ def build_oauth(url: str, redirect_uri: str, storage: _Storage,
         state = dict(parse_qsl(urlsplit(auth_url).query)).get("state")
         if not state:
             raise AuthError("The server's sign-in address carries no state value.")
+        if len(_PENDING) >= MAX_PENDING:
+            raise AuthError("Too many sign-ins are in progress. Try again in a few minutes.")
         mine["state"] = state
         _PENDING[state] = asyncio.get_running_loop().create_future()
         await announce(auth_url)

@@ -94,3 +94,15 @@ def test_the_behavioural_agent_remembers_the_previous_response_between_runs(clie
     assert behavioural["detail"]["previous_response"]
     assert [h["n"] for h in behavioural["detail"]["history"]] == [1, 2]
     runner.reset_server_state("demo-rug-pull")
+
+
+def test_public_mode_refuses_a_socket_from_a_foreign_origin(client, monkeypatch):
+    monkeypatch.setenv("GUARDIAN_PUBLIC", "1")
+    with pytest.raises(Exception):
+        with client.websocket_connect("/ws/run", headers={"origin": "https://evil.example"}) as ws:
+            ws.send_json({"server_id": "demo-clean"})
+            ws.receive_json()
+    assert pm.origin_allowed("https://site.example", "site.example")
+    assert not pm.origin_allowed("https://evil.example", "site.example")
+    monkeypatch.setenv("GUARDIAN_ALLOWED_ORIGINS", "https://other.example/")
+    assert pm.origin_allowed("https://other.example", "site.example")
