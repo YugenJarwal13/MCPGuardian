@@ -45,10 +45,13 @@ export function narrate(fold, last) {
 
   switch (last.stage) {
     case "connect":
+      if (st === "started" && d.oauth_url) return mk("Sign-in needed", "This server asks you to sign in. Approve access in the window that opened (or use the link on this page); Guardian continues by itself and keeps the token only in memory.", "warn");
+      if (st === "started" && /^Reusing/.test(last.message)) return mk("Reusing your sign-in", "You already signed in to this server a moment ago, so Guardian reuses that session.");
+      if (st === "error" && d.auth_required) return mk("This server wants a login", `${last.message}${d.oauth_advertised ? " It offers OAuth sign-in." : ""} Choose a method under Authentication and run the check again.`, "warn");
       if (st === "started") return mk("Stepping in between", "Your agent wants to use a tool server. Instead of letting it connect directly, MCP Guardian opens the connection itself and stays in the middle of everything that follows.");
       if (st === "error" && d.guard) return mk(d.guard === "rate_limit" ? "Slow down a little" : "Input refused", last.message, "bad");
       if (st === "error") return mk("Could not reach the server", last.message, "bad");
-      return mk("Connected", `Guardian is now talking to ${d.endpoint || "the server"}. The agent still hasn't seen anything.`, "ok");
+      return mk("Connected", `Guardian is now talking to ${d.endpoint || "the server"}${d.transport ? ` over ${d.transport === "sse" ? "SSE" : "streamable HTTP"}` : ""}. The agent still hasn't seen anything.${d.note ? ` ${d.note}` : ""}`, "ok");
     case "list_tools":
       if (st === "started") return mk("Asking: what tools do you offer?", "Every MCP server describes its tools in plain text: a name, a short manual, and the inputs it needs. An AI agent reads those descriptions and trusts them. That makes them the favourite hiding place for attacks.");
       if (st === "error") return mk("Tool not available", last.message, "bad");

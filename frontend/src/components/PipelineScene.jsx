@@ -192,7 +192,7 @@ export default function PipelineScene({ events, serverName, notRun = [] }) {
   const waitingHuman = !!waitingAt;
 
   const agentSays = !done ? null
-    : inspectOnly ? null
+    : inspectOnly || done.status === "error" ? null
     : allowed ? { lines: ["Got a safe", "response ✓"], tone: "ok" }
       : { lines: ["Refused safely.", "Nothing harmful", "reached me."], tone: "ok" };
   const mood = !last ? "happy" : done && !done.detail?.inspect_only ? "happy" : "alert";

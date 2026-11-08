@@ -53,6 +53,7 @@ const KNOWN = new Set([
   "decision", "refusal", "reason", "static", "final_decision", "tool", "engines", "models", "anomalous",
   "approved_scope", "provider", "model", "method", "cached", "model_latency_ms", "models_tried", "all_tools",
   "inspect_only", "hint", "history", "previous_response", "definition_change",
+  "auth_required", "oauth_advertised", "oauth_url", "not_inspected", "guard",
 ]);
 
 function Detail({ stage, detail, message }) {
@@ -133,6 +134,15 @@ function Detail({ stage, detail, message }) {
       {detail.reason && <Row label="Why">{detail.reason}</Row>}
       {detail.note && <Row label="Note">{detail.note}</Row>}
       {detail.hint && <Row label="Hint">{detail.hint}</Row>}
+      {detail.auth_required && (
+        <Row label="Login">This server wants credentials.{detail.oauth_advertised ? " It offers OAuth sign-in." : ""} Choose a method under Authentication.</Row>
+      )}
+      {detail.oauth_url && (
+        <Row label="Sign-in"><a href={detail.oauth_url} target="mcp-guardian-signin" rel="noreferrer">Open the server’s sign-in page</a></Row>
+      )}
+      {detail.not_inspected?.length > 0 && (
+        <Row label="Not inspected">{detail.not_inspected.length} tool(s) over the per-run limit: {detail.not_inspected.slice(0, 6).join(", ")}{detail.not_inspected.length > 6 ? "…" : ""}</Row>
+      )}
       {detail.endpoint && <Row label="Endpoint">{detail.endpoint}{detail.source && <> ({detail.source})</>}</Row>}
       {Object.keys(rest).length > 0 && (
         <details className="raw"><summary>Raw detail</summary><pre>{JSON.stringify(rest, null, 2)}</pre></details>
