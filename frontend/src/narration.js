@@ -1,7 +1,6 @@
 // Turns the real backend events into plain-English narration for people who are not security
 // engineers. Every number, name and quote below comes from the event stream; nothing is invented.
 
-const pct = (c) => `${Math.round((c || 0) * 100)}%`;
 const short = (m) => (m ? m.split("/").pop().replace(/:free$/, "") : "");
 const q = (s, n = 90) => {
   const t = String(s || "").replace(/\s+/g, " ").trim();
@@ -60,11 +59,11 @@ export function narrate(fold, last) {
     case "static_check":
       if (st === "started") return mk("Inspector 1 reads the fine print", `A CrewAI agent, the “MCP Tool Metadata Auditor”, reads each description like a security reviewer. It is looking for hidden orders aimed at the AI instead of at a human reader. ${last.message}`);
       if (st === "flagged" && d.definition_change) {
-        return mk("Rug pull: the tool's definition changed", `“${tool}” does not describe itself the way it did when Guardian first saw it. Tools are often trusted once and then quietly rewritten, so every description is compared with the first one seen. ${d.verdict !== "clean" ? `The new text was also judged ${d.verdict} (${pct(d.confidence)} confident). ` : ""}A human has to approve it.`, "bad");
+        return mk("Rug pull: the tool's definition changed", `“${tool}” does not describe itself the way it did when Guardian first saw it. Tools are often trusted once and then quietly rewritten, so every description is compared with the first one seen. ${d.verdict !== "clean" ? `The new text was also judged ${d.verdict}. ` : ""}A human has to approve it.`, "bad");
       }
       if (st === "flagged") {
         const ph = d.flagged_phrases || [];
-        return mk("Hidden instructions found", `The auditor (${engineWord(last) || "static analysis"}) marked “${tool}” as ${d.verdict}, ${pct(d.confidence)} confident. ${d.reasoning || ""}${ph.length ? ` It points at ${q(ph[0], 70)}.` : ""}`, "bad");
+        return mk("Hidden instructions found", `The auditor (${engineWord(last) || "static analysis"}) marked “${tool}” as ${d.verdict}. ${d.reasoning || ""}${ph.length ? ` It points at ${q(ph[0], 70)}.` : ""}`, "bad");
       }
       return mk("The descriptions look clean", `The auditor (${engineWord(last) || "static analysis"}) found no hidden orders in “${tool}”. ${d.reasoning ? `In its words: ${q(d.reasoning, 170)}` : ""}`, "ok");
     case "tool_call":
@@ -116,7 +115,6 @@ export function consoleLine(ev) {
   const d = ev.detail || {};
   const bits = [];
   if (d.verdict) bits.push(`verdict=${d.verdict}`);
-  if (d.confidence != null) bits.push(`conf=${Number(d.confidence).toFixed(2)}`);
   if (ev.engine && ev.engine !== "none") bits.push(`engine=${ev.engine}`);
   if (ev.model || d.model) bits.push(`model=${short(ev.model || d.model)}`);
   if (d.method) bits.push(`via=${d.method}`);

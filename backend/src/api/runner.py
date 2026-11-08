@@ -300,7 +300,7 @@ class _Run:
                     v = interceptor._static[name]
                     meta = interceptor.models.get(name, {}).get("static", {})
                     outcome = ("looks clean" if v.verdict == "clean"
-                               else f"FLAGGED as {v.verdict} ({round(v.confidence * 100)}%)")
+                               else f"FLAGGED as {v.verdict}")
                     await em.emit("static_check", "started", f"Tool {i}/{n} '{name}': {outcome}",
                                   _verdict_detail(v, meta=meta),
                                   interceptor.engines.get(name, {}).get("static", "none"), meta)

@@ -25,13 +25,10 @@ export function Highlighted({ text, phrases }) {
   );
 }
 
-function Confidence({ verdict, value }) {
-  const pct = Math.round((value || 0) * 100);
+function Confidence({ verdict }) {
   return (
     <div className="conf">
       <span className={`vpill ${verdict}`}>{verdict}</span>
-      <span className="bar" aria-hidden="true"><i className={verdict} style={{ width: `${pct}%` }} /></span>
-      <span className="num">{pct}% confident</span>
     </div>
   );
 }
@@ -61,7 +58,7 @@ function Detail({ stage, detail, message }) {
   const rest = Object.fromEntries(Object.entries(detail).filter(([k]) => !KNOWN.has(k)));
   return (
     <div className="detail">
-      {detail.verdict && <Confidence verdict={detail.verdict} value={detail.confidence} />}
+      {detail.verdict && <Confidence verdict={detail.verdict} />}
       {detail.reasoning && <p className="reasoning">{detail.reasoning}</p>}
       {stage === "behavioral_check" && <p className="reasoning">{message}</p>}
       {phrases.length > 0 && (
@@ -76,7 +73,7 @@ function Detail({ stage, detail, message }) {
       )}
       {detail.static && (
         <Row label="Static verdict">
-          <Confidence verdict={detail.static.verdict} value={detail.static.confidence} />
+          <Confidence verdict={detail.static.verdict} />
           <p className="reasoning" style={{ marginTop: 6 }}>{detail.static.reasoning}</p>
         </Row>
       )}

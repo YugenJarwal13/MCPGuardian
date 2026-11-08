@@ -318,7 +318,7 @@ export default function TestLivePage({ health }) {
                 <div>
                   <h2>{badCount ? `${badCount} of ${tools.length} tools contain instructions aimed at the AI` : `No hidden instructions found in ${tools.length === 1 ? "the tool" : `all ${tools.length} tools`}`}</h2>
                   <p>{badCount
-                    ? "Read the quoted phrase on each flagged tool. Real attacks hide orders such as sending data elsewhere or ignoring the user; some servers add legitimate usage hints (for example “always read this guide first”). On real clean tools this detector raises a false alarm about 4% of the time."
+                    ? "Read the quoted phrase on each flagged tool. Real attacks hide orders such as sending data elsewhere or ignoring the user; some servers add legitimate usage hints (for example “always read this guide first”). On real clean tools this detector raises a false alarm on roughly one tool in twenty-five."
                     : "A clean scan isn’t a guarantee: it covers what the tools say about themselves, not what the server does with your data."}</p>
                 </div>
               </div>
@@ -329,7 +329,7 @@ export default function TestLivePage({ health }) {
                   <button key={t.name} type="button" className={`tcard${t.verdict !== "clean" ? " bad" : ""}`} onClick={() => openConfigure(t.name)}>
                     <div className="top">
                       <code style={{ fontSize: "0.9rem" }}>{t.name}</code>
-                      <span><span className={`vpill ${t.verdict}`}>{t.verdict}</span> <span className="muted num">{Math.round(t.confidence * 100)}%</span></span>
+                      <span><span className={`vpill ${t.verdict}`}>{t.verdict}</span></span>
                     </div>
                     <div className="why">{clip(t.reasoning, 230)}</div>
                     {t.flagged_phrases?.length > 0 && <div className="chips" style={{ marginTop: 8 }}>{t.flagged_phrases.slice(0, 3).map((p, i) => <code key={i} className="chip">{clip(p, 60)}</code>)}</div>}
