@@ -152,3 +152,42 @@
 .t-phr { grid-row: 4; grid-column: 1 / -1; color: #f58f8a; font-size: 11.5px; overflow-wrap: anywhere; }
 .t-status.started { color: #c9b27a; } .t-status.passed { color: #4cc38a; } .t-status.flagged, .t-status.blocked, .t-status.error { color: #f0716b; } .t-status.escalate { color: #e7a83c; }
 .caret-t { display: inline-block; width: 8px; height: 15px; background: var(--term-text); animation: blink 1s steps(2) infinite; vertical-align: text-bottom; }
+
+/* ---------- landing hero animation (HeroScene) ---------- */
+.hs-breathe { animation: hs-breathe 3.6s ease-in-out infinite; }
+@keyframes hs-breathe { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.6px); } }
+.hs-sway { animation: hs-sway 5s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 100%; }
+@keyframes hs-sway { 0%, 100% { transform: rotate(-0.7deg); } 50% { transform: rotate(0.7deg); } }
+.hs-agent .antenna { animation: hs-antenna 2.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes hs-antenna { 0%, 100% { transform: scale(1); } 45% { transform: scale(1.35); } }
+.hs-float { animation: hs-float 4s ease-in-out infinite; }
+@keyframes hs-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+.hs-server .led { animation: hs-led 2.4s ease-in-out infinite; }
+.hs-server g g:nth-of-type(2) .led { animation-delay: 0.5s; }
+.hs-server g g:nth-of-type(3) .led { animation-delay: 1s; }
+.hs-server.active .led { animation-duration: 0.6s; }
+@keyframes hs-led { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+.hs-dot { fill: var(--accent); opacity: 0.55; }
+.hs-ring { fill: none; stroke: var(--accent); stroke-width: 2; opacity: 0; }
+.hs-ring.bad { stroke: var(--block); }
+.hs-beam { fill: var(--accent); }
+.hs-beam-band { fill: color-mix(in srgb, var(--accent) 22%, transparent); }
+.hs-hl { fill: color-mix(in srgb, var(--block) 30%, transparent); }
+.hs-barrier { fill: none; stroke: var(--block); stroke-width: 4; stroke-linecap: round; }
+.hs-stamp rect { stroke-width: 3; }
+.hs-stamp text { font: 800 17px var(--font-mono); letter-spacing: 0.12em; }
+.hs-stamp.bad rect { fill: var(--block-soft); stroke: var(--block); } .hs-stamp.bad text { fill: var(--block); }
+.hs-stamp.ok rect { fill: var(--pass-soft); stroke: var(--pass); } .hs-stamp.ok text { fill: var(--pass); }
+.hs-pill rect { fill: var(--pass-soft); stroke: var(--pass); stroke-width: 1.6; }
+.hs-pill text { font: 600 13px var(--font-ui); fill: var(--pass-ink); }
+.hero-scene .sk-shield.glow .acc-fill { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 55%, transparent)); transition: filter var(--t-med); }
+/* the three chips: a thin line fills as that part of the story plays */
+.hero-steps .hstep { position: relative; overflow: hidden; }
+.hero-steps .hstep::after { content: ""; position: absolute; left: 0; bottom: 0; height: 2px; width: calc(var(--p, 0) * 100%); background: var(--accent); opacity: 0; transition: opacity var(--t-med) var(--ease); }
+.hero-steps .hstep.on::after { opacity: 1; }
+.hero-steps .hstep i svg { width: 12px; height: 12px; }
+.hero-caption { transition: none; }
+@media (max-width: 440px) { .hero-scene .hero-caption { min-height: 80px; } }
+@media (prefers-reduced-motion: reduce) {
+  .hs-breathe, .hs-sway, .hs-agent .antenna, .hs-float, .hs-server .led { animation: none; }
+}
