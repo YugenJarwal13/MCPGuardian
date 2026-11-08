@@ -873,7 +873,7 @@ regex).
 * **The case manager's decision is advisory.** It is displayed, not enforced.
 * **Live app memory is per API process:** fingerprints, drift history and fixture state are lost on restart.
 * **MCP coverage:** tools only; no resources or prompts; no stdio; no authentication; no protocol-version check.
-* **SSRF coverage in public mode** does not defend against DNS rebinding or redirects.
+* **SSRF coverage in public mode** validates and pins every request, including redirect hops and OAuth discovery URLs, to the resolved public address (DNS rebinding is closed). Tool calls on servers you approve still run with their own privileges.
 * **Verdict confidence is informational**; a 51% "malicious" is blocked like a 99% one.
 * **Observability:** Langfuse not verified; Docker not built; no cloud deployment; CI backend job failing.
 * **Stale comments:** the module docstrings of the two task files still say prompt v2 was "unvalidated"; it has
