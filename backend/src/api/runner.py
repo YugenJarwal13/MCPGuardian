@@ -41,7 +41,7 @@ from src.api.servers import (
 )
 from src.crewai_layer.crew import llm_available
 from src.evaluation.ablation_config import AblationConfig
-from src.security import access
+from src.security import access, secret_scan
 from src.security.input_guard import check_arguments, check_url
 from src.security.public_mode import check_public_target, limiter, origin_allowed, public_mode, restrict_execution
 from src.mcp_gateway.interceptor import (
@@ -122,6 +122,7 @@ def _friendly_error(exc: BaseException) -> str:
 
 
 def _preview(text: str, n: int = 1500) -> str:
+    text = secret_scan.redact_text(text)          # live credentials in a reply are never shown or logged
     return text if len(text) <= n else text[:n] + f"\n… ({len(text) - n} more chars)"
 
 

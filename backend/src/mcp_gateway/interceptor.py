@@ -31,6 +31,7 @@ from src.audit import log_decision
 from src.config import allowlist as load_allowlist
 from src.crewai_layer.crew import analyze_runtime_timed_meta, analyze_static_meta
 from src.crewai_layer.schemas import InspectionVerdict
+from src.security import secret_scan
 from src.data.schemas import ToolTestCase
 from src.evaluation.ablation_config import AblationConfig
 
@@ -120,6 +121,7 @@ class GuardianInterceptor:
         self._anomalous: dict[str, bool] = {}
         # Tools whose description/schema differs from the first one seen (a rug pull on the definition).
         self.definition_changes: dict[str, dict] = {}
+        self.credential_leaks: dict[str, list[str]] = {}
         self.not_inspected: list[str] = []      # tools beyond the per-run inspection cap
         self._scope: dict[str, Optional[str]] = {}
         # Which engine produced each tool's verdicts: {"static": ..., "runtime": ...}.
@@ -259,6 +261,16 @@ class GuardianInterceptor:
             return None
         verdict, engine, elapsed_ms, meta = await asyncio.to_thread(
             analyze_runtime_timed_meta, name, text, self._use_llm)
+        leaks = secret_scan.scan(text)
+        if leaks and verdict.verdict != "malicious":
+            kinds = ", ".join(sorted({f.kind for f in leaks}))
+            verdict = InspectionVerdict(
+                verdict="suspicious", confidence=max(verdict.confidence, 0.9),
+                reasoning=("Credential scan: the response contains " + kinds + " in plain text. No instruction was "
+                           "found, but handing live credentials to an agent is a leak. "
+                           + (verdict.reasoning or "")).strip(),
+                flagged_phrases=[f"{f.kind}: {f.redacted}" for f in leaks][:5] + list(verdict.flagged_phrases)[:3])
+        self.credential_leaks[name] = [f.kind for f in leaks]
         self._runtime[name] = verdict
         self.engines.setdefault(name, {})["runtime"] = engine
         self.models.setdefault(name, {})["runtime"] = meta

@@ -51,6 +51,7 @@ DVMCP_PRESETS: dict[int, tuple[str, dict]] = {
     4: ("get_weather_forecast", {"city": "London"}),
     6: ("upload_and_process_document", {"document_name": "q3_report.txt",
                                         "content": CH6_DEMO_DOCUMENT}),
+    7: ("check_service_status", {"service_id": "email_service"}),
     10: ("get_user_profile", {"username": "alice"}),
 }
 
