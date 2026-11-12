@@ -78,6 +78,8 @@ def langfuse_host() -> str:
 
 
 def langfuse_configured() -> bool:
+    if os.environ.get("PYTEST_CURRENT_TEST") and not os.environ.get("GUARDIAN_TEST_LANGFUSE"):
+        return False         # the test suite must never write fake runs into a real Langfuse project
     return bool(os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY"))
 
 
@@ -104,7 +106,11 @@ def init_tracing(path: Optional[Path] = None, force: bool = False) -> TracerProv
     with _LOCK:
         if _PROVIDER is not None and not force:
             return _PROVIDER
-        provider = TracerProvider(resource=Resource.create({"service.name": "mcp-guardian"}))
+        from src.security.public_mode import public_mode
+
+        environment = os.environ.get("GUARDIAN_ENVIRONMENT") or ("production" if public_mode() else "local")
+        provider = TracerProvider(resource=Resource.create(
+            {"service.name": "mcp-guardian", "langfuse.environment": environment}))
         provider.add_span_processor(SimpleSpanProcessor(JsonlSpanExporter(path or resolve_path("traces"))))
         remote = _remote_exporter()
         if remote is not None:
