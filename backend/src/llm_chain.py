@@ -292,10 +292,14 @@ class ChainLLM:
     # -- public ----------------------------------------------------------------
     def complete(self, system: str, user: str, extra_key: str = "") -> tuple[dict, dict]:
         """Return ``(verdict_dict, meta)``. Raises ChainError when nothing answers. Each call is one
-        ``llm.complete`` trace span (model, tokens, latency, cache hit, slots tried)."""
+        trace span named after the calling agent (``static_inspector.llm``) with model, messages, tokens, cost, latency and cache hit."""
         from src.observability import clip, tracer
 
-        with tracer().start_as_current_span("llm.complete") as span:
+        from src.usage import CURRENT_AGENT, agent_label, record, reference_cost
+
+        agent = agent_label(CURRENT_AGENT.get()) if CURRENT_AGENT.get() else "llm"
+        with tracer().start_as_current_span(f"{agent}.llm" if agent != "llm" else "llm.complete") as span:
+            span.set_attribute("guardian.agent", agent)
             span.set_attribute("input.value", clip([{"role": "system", "content": system},
                                                     {"role": "user", "content": user}], 6000))
             try:
@@ -306,6 +310,7 @@ class ChainLLM:
                 span.set_attribute("langfuse.observation.level", "ERROR")
                 span.set_attribute("langfuse.observation.status_message", clip(str(exc), 300))
                 raise
+            record(meta)                      # one line in this run's usage, whatever the span shows
             cached = bool(meta.get("cached"))
             span.set_attribute("gen_ai.system", meta.get("provider") or "")
             span.set_attribute("gen_ai.request.model", meta.get("model") or "")
@@ -317,6 +322,7 @@ class ChainLLM:
             span.set_attribute("output.value", clip(verdict, 4000))
             if cached:
                 # served from the local answer cache: no model was called, so no tokens and no cost are booked
+                span.set_attribute("langfuse.observation.type", "span")      # not a model call: nothing to count
                 span.set_attribute("langfuse.observation.status_message", "served from cache")
                 return verdict, meta
             tokens = meta.get("tokens") or {}
@@ -331,6 +337,8 @@ class ChainLLM:
                 span.set_attribute("gen_ai.usage.output_tokens", usage.get("output", 0))
                 span.set_attribute("langfuse.observation.usage_details",
                                    json.dumps({**usage, "total": sum(usage.values())}))
+                span.set_attribute("langfuse.observation.metadata.reference_cost_usd",
+                                   f"{reference_cost(usage.get('input', 0), usage.get('output', 0)):.6f}")
             if meta.get("cost_usd") is not None:       # the provider's own figure; $0 for free-tier models
                 span.set_attribute("langfuse.observation.cost_details", json.dumps({"total": float(meta["cost_usd"])}))
             return verdict, meta

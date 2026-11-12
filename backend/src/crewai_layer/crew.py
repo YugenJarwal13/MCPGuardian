@@ -184,19 +184,44 @@ def _analyze(kind: str, heuristic_call, agent_import, task_builder_import, args:
         return heuristic_call(), ENGINE_HEURISTIC, {}
     agent, builder = agent_import(), task_builder_import()
     meta: dict = {}
-    try:
-        (verdict, meta), timed_out = _kickoff_with_timeout(kind, agent, builder, *args)
-    except Exception as exc:  # network/provider errors must not crash the gateway
-        log.warning("%s LLM path failed: %s", kind, exc)
-        from src.monitoring import record_error
+    from src.observability import clip, tracer
+    from src.usage import CURRENT_AGENT, agent_label
 
-        record_error("crewai", kind, exc)
-        verdict, timed_out, meta = None, False, {"error": f"{type(exc).__name__}: {str(exc)[:200]}"}
-    if timed_out:
-        return _timeout_verdict(kind, _timeout_s(kind)), ENGINE_TIMEOUT, {"error": "timeout"}
-    if verdict is None:
-        return heuristic_call(), ENGINE_FALLBACK, meta
-    return verdict, ENGINE_LLM, meta
+    label = agent_label(kind)
+    with tracer().start_as_current_span(f"{label} (CrewAI)") as span:       # one agent run, parent of its model call
+        span.set_attribute("langfuse.observation.type", "agent")
+        span.set_attribute("guardian.agent", label)
+        span.set_attribute("gen_ai.agent.name", label)
+        span.set_attribute("guardian.tool_name", str(args[0]) if args else "")
+        span.set_attribute("input.value", clip({"tool": args[0] if args else None,
+                                                "text": (args[1] if len(args) > 1 else "")}, 1500))
+        token = CURRENT_AGENT.set(kind)
+        try:
+            (verdict, meta), timed_out = _kickoff_with_timeout(kind, agent, builder, *args)
+        except Exception as exc:  # network/provider errors must not crash the gateway
+            log.warning("%s LLM path failed: %s", kind, exc)
+            from src.monitoring import record_error
+
+            record_error("crewai", kind, exc)
+            span.record_exception(exc)
+            span.set_attribute("langfuse.observation.level", "ERROR")
+            verdict, timed_out, meta = None, False, {"error": f"{type(exc).__name__}: {str(exc)[:200]}"}
+        finally:
+            CURRENT_AGENT.reset(token)
+        if timed_out:
+            span.set_attribute("guardian.engine", ENGINE_TIMEOUT)
+            span.set_attribute("langfuse.observation.level", "WARNING")
+            return _timeout_verdict(kind, _timeout_s(kind)), ENGINE_TIMEOUT, {"error": "timeout"}
+        if verdict is None:
+            span.set_attribute("guardian.engine", ENGINE_FALLBACK)
+            span.set_attribute("langfuse.observation.level", "WARNING")
+            span.set_attribute("langfuse.observation.status_message", "model failed: regex rules answered")
+            return heuristic_call(), ENGINE_FALLBACK, meta
+        span.set_attribute("guardian.engine", ENGINE_LLM)
+        span.set_attribute("guardian.verdict", verdict.verdict)
+        span.set_attribute("output.value", clip({"verdict": verdict.verdict, "reasoning": verdict.reasoning,
+                                                 "flagged": verdict.flagged_phrases}, 1500))
+        return verdict, ENGINE_LLM, meta
 
 
 def analyze_static_meta(

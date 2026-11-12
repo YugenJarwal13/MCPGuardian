@@ -132,7 +132,10 @@ bash scripts/run_full_local_eval.sh                  # all cases with a local Ol
   the provider reports (free-tier models report $0, so $0.00 is the real figure). Each run also gets **scores**:
   `guardian.decision`, `guardian.risk` (block 1, escalate 0.5, allow 0), per-layer flags (`static`, `runtime`,
   `behavioral`), `guardian.credential_leak`, and `guardian.llm_coverage` (the share of inspection answered by the
-  model rather than the regex fallback). Answers served from the local cache book no tokens and no cost.
+  model rather than the regex fallback), plus model calls, tokens, provider cost and a labelled reference-cost
+  estimate. Every agent (static inspector, runtime inspector, behaviour judge, case manager) is its own named observation.
+  Credentials are masked before export, export health is on `/health`, and the full production guide is in
+  [`docs/observability.md`](docs/observability.md). Answers served from the local cache book no tokens and no cost.
 - **Callbacks:** CrewAI step/task callbacks and ADK agent, model and tool callbacks write intermediate outputs and
   errors to `backend/logs/audit_trail.jsonl` (`backend/src/monitoring.py`). `streamlit run backend/src/dashboard/app.py`
   browses the audit trail.

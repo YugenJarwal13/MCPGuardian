@@ -41,6 +41,7 @@ from src.api.servers import (
 )
 from src.crewai_layer.crew import llm_available
 from src.evaluation.ablation_config import AblationConfig
+from src.observability import clip, tracer
 from src.security import access, secret_scan
 from src.security.input_guard import check_arguments, check_url
 from src.security.public_mode import check_public_target, limiter, origin_allowed, public_mode, restrict_execution
@@ -272,7 +273,12 @@ class _Run:
 
             # 2. list_tools ----------------------------------------------------
             await em.emit("list_tools", "started", "Listing tools (tools/list)…")
-            listed = await list_all_tools(session)
+            with tracer().start_as_current_span("mcp.tools_list") as ls:
+                ls.set_attribute("langfuse.observation.type", "tool")
+                ls.set_attribute("guardian.server", spec.name)
+                listed = await list_all_tools(session)
+                ls.set_attribute("guardian.tool_count", len(list(_iter_tools(listed))))
+                ls.set_attribute("output.value", clip([_tool_fields(t)[0] for t in _iter_tools(listed)][:200], 3000))
             tools = {(f := _tool_fields(t))[0]: f for t in _iter_tools(listed)}
             tool = self.req.get("tool_name") or spec.default_tool or next(iter(tools), None)
             if tool not in tools:
@@ -384,8 +390,23 @@ class _Run:
             else:
                 await em.emit("tool_call", "started", f"Calling '{tool}' on the server…",
                               {"arguments": args})
-                response = await session.call_tool(tool, args)
-                text, keys = _response_text_and_keys(response)
+                with tracer().start_as_current_span("mcp.call_tool") as cs:
+                    cs.set_attribute("langfuse.observation.type", "tool")
+                    cs.set_attribute("guardian.server", spec.name)
+                    cs.set_attribute("guardian.tool_name", tool)
+                    cs.set_attribute("input.value", clip(args, 3000))
+                    try:
+                        response = await session.call_tool(tool, args)
+                    except Exception as exc:
+                        cs.record_exception(exc)
+                        cs.set_attribute("langfuse.observation.level", "ERROR")
+                        raise
+                    text, keys = _response_text_and_keys(response)
+                    cs.set_attribute("output.value", clip(text, 4000))
+                    cs.set_attribute("guardian.response_chars", len(text))
+                    if getattr(response, "isError", False):
+                        cs.set_attribute("langfuse.observation.level", "WARNING")
+                        cs.set_attribute("langfuse.observation.status_message", "the tool reported an error")
                 await em.emit("tool_call", "passed", "Tool executed; response captured.",
                               {"response_preview": _preview(text)})
 
@@ -588,6 +609,7 @@ async def ws_run(ws: WebSocket) -> None:
         try:
             run = _Run(ws, req, ws.app.state.a2a_client)
             run.notice = notice
+            run.em.set_user(client)
         except KeyError:
             await ws.send_json({"stage": "done", "status": "error",
                                 "message": f"Unknown server '{req.get('server_id')}'"})

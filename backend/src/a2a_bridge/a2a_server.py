@@ -26,8 +26,31 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 
 
+class TraceContextMiddleware:
+    """Pure ASGI middleware: adopts the caller's W3C trace context, so everything the case manager does while
+    handling a message is a child of the pipeline's ``a2a_hop`` span instead of the start of a new trace."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        from opentelemetry import context as otel_context
+        from opentelemetry.propagate import extract
+
+        carrier = {k.decode("latin-1"): v.decode("latin-1") for k, v in scope.get("headers", [])}
+        token = otel_context.attach(extract(carrier))
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            otel_context.detach(token)
+
+
 def build_a2a_app(manager: PipelineManager, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT):
-    return to_a2a(manager.agent, host=host, port=port, runner=manager.runner)
+    app = to_a2a(manager.agent, host=host, port=port, runner=manager.runner)
+    app.add_middleware(TraceContextMiddleware)
+    return app
 
 
 def free_port() -> int:

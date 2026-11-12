@@ -107,7 +107,7 @@ def test_model_call_is_a_langfuse_generation_with_model_usage_and_cost(tmp_path)
     assert json.loads(a["langfuse.observation.cost_details"]) == {"total": 0.00042}
     assert "system prompt" in a["input.value"] and "user prompt" in a["input.value"]
     b = second["attributes"]                                 # a cache hit books no model usage and no cost
-    assert b["guardian.cached"] is True and "langfuse.observation.type" not in b
+    assert b["guardian.cached"] is True and b["langfuse.observation.type"] == "span"      # not a model call
     assert "langfuse.observation.usage_details" not in b and "langfuse.observation.cost_details" not in b
     import src.observability as obs
     obs._PROVIDER = None

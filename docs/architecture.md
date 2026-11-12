@@ -121,3 +121,5 @@ challenge was allowed. `security/secret_scan.py` closes that gap deterministical
 values is raised to `suspicious` (policy: a human decides) and the values are masked in events, logs and the UI.
 It runs in the live gateway only, so the published benchmark numbers are unchanged. It is a safety net, not a data-loss
 prevention product; it also does not inspect MCP resources or prompts, where DVMCP's prompt-injection challenge lives.
+
+The full trace layout, cost semantics, scores and production settings are in [observability.md](observability.md).

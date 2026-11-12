@@ -84,8 +84,14 @@ class RemoteA2AClient:
             import httpx
             from a2a.client import ClientConfig, ClientFactory
 
+            from opentelemetry.propagate import inject
+
+            async def _propagate_trace(request: "httpx.Request") -> None:
+                inject(request.headers)         # W3C traceparent: the case manager's spans join this run's trace
+
             config = ClientConfig(streaming=False,
-                                  httpx_client=httpx.AsyncClient(timeout=self._timeout_s))
+                                  httpx_client=httpx.AsyncClient(timeout=self._timeout_s,
+                                                                 event_hooks={"request": [_propagate_trace]}))
             self._clients[url] = await ClientFactory.connect(url, client_config=config)
         return self._clients[url]
 

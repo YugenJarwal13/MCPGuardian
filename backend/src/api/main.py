@@ -21,7 +21,7 @@ from src.api import runner, servers
 from src.api.events import STAGES
 from src.config import REPO_ROOT, resolve_path
 from src.crewai_layer.crew import llm_available
-from src.observability import init_tracing
+from src.observability import init_tracing, shutdown_tracing
 from src.security.access import access_required, require_access
 
 
@@ -39,6 +39,7 @@ async def lifespan(app: FastAPI):
             yield
         finally:
             await client.aclose()
+            shutdown_tracing()          # send what is still queued before the process exits
 
 
 app = FastAPI(title="MCP Guardian live pipeline", lifespan=lifespan)
@@ -62,14 +63,14 @@ def health() -> dict:
     if uses_chain():
         llm["chain"] = get_chain().describe()
         llm["events"] = get_chain().events[-5:]
-    from src.observability import langfuse_configured
+    from src.observability import status as tracing_status
     from src.security.public_mode import limiter, public_mode
 
     pub = public_mode()
     return {"ok": True, "llm_available": available, "llm": llm, "a2a_url": app.state.a2a_url,
             "stages": STAGES, "public_mode": pub, "access_required": access_required(),
             "llm_runs_left_today": limiter().llm_runs_left() if pub else None,
-            "tracing": {"file": True, "langfuse": langfuse_configured()}}
+            "tracing": tracing_status()}
 
 
 _CALLBACK_PAGE = ("<!doctype html><meta charset=utf-8><title>MCP Guardian</title>"
