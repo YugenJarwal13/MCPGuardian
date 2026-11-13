@@ -26,7 +26,8 @@ regex baseline on the same cases:
 On the 1,312 real MCPTox attacks the pipeline flags 75.8% (95% CI 73-78%) against 39.7% for the baseline, with 3.9% false
 alarms on 362 real clean tools. Details, per-dataset tables and limitations (notably DVMCP, 16%) are in
 [`docs/evaluation_report.md`](docs/evaluation_report.md); token, time and cost figures are in
-[`docs/cost_and_runtime.md`](docs/cost_and_runtime.md).
+[`docs/cost_and_runtime.md`](docs/cost_and_runtime.md). Every agent and the A2A hop are evaluated in
+[`docs/agent_evaluation.md`](docs/agent_evaluation.md) (`python -m src.evaluation.agent_evals`).
 
 ## Quick start
 
