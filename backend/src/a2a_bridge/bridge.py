@@ -41,6 +41,7 @@ class GuardianVerdictMessage(BaseModel):
     static_verdict: str | None = None
     runtime_verdict: str | None = None
     behavioral_anomaly: bool = False
+    requested_scope: str | None = None     # the sensitive scope the tool's parameters grant, so the case record agrees with the gateway
     combined_confidence: float = 0.0
     evidence: list[str] = []               # flagged_phrases + z-score/new-keys merged
     timestamp: str = Field(default_factory=_now_iso)

@@ -48,6 +48,7 @@ class Case(BaseModel):
     static_verdict: str | None = None
     runtime_verdict: str | None = None
     behavioral_anomaly: bool = False
+    requested_scope: str | None = None
     combined_confidence: float = 0.0
     evidence: list[str] = []
     decision: str = GuardianDecision.ALLOW.value
@@ -79,13 +80,14 @@ class CaseManagerAgent(BaseAgent):
             static_verdict=_verdict(msg.static_verdict, msg.combined_confidence),
             runtime_verdict=_verdict(msg.runtime_verdict, msg.combined_confidence),
             is_behaviorally_anomalous=msg.behavioral_anomaly,
-            requested_scope=None,
+            requested_scope=msg.requested_scope,
             allowlist=self.allowlist,
         )
         case = Case(
             case_id=msg.case_id, tool_name=msg.tool_name,
             static_verdict=msg.static_verdict, runtime_verdict=msg.runtime_verdict,
-            behavioral_anomaly=msg.behavioral_anomaly, combined_confidence=msg.combined_confidence,
+            behavioral_anomaly=msg.behavioral_anomaly, requested_scope=msg.requested_scope,
+            combined_confidence=msg.combined_confidence,
             evidence=msg.evidence, decision=decision.value, timestamp=msg.timestamp,
         )
         log_decision({"layer": "enforcement", "case_id": msg.case_id,
