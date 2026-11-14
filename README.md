@@ -63,6 +63,7 @@ On macOS/Linux run the same commands by hand: `cd backend && python -m uvicorn s
 | **Overview** | The problem, how Guardian works, the evaluation results, the datasets and the limitations. |
 | **Live demo** | Four numbered sections: select a scenario (ten DVMCP attacks, offline stand-ins, clean references), configure the tool and inspector model, execute the pipeline (animated diagram, narration, backend log, inline approvals) and review the results (verdict, without/with-Guardian comparison, every stage). |
 | **Check a server** | A guided flow of dialogs: enter the URL → Guardian probes the server and asks for authentication only if it needs it → connects and inspects every tool → an inspection summary → choose a tool and the inspector model → run the full pipeline → results. Works with any MCP server reachable over streamable HTTP or SSE. |
+| **Evaluations** | One tab per agent (static inspector, runtime inspector, behaviour layer, case manager and A2A, the whole pipeline) with the saved evaluation results and the counts behind them, plus cost, tokens and time per stage and a button that opens the traces in your Langfuse project (shown locally; hidden on a public deployment unless `GUARDIAN_SHOW_LANGFUSE_LINK=on`). |
 
 Both live pages use the LLM pipeline only and share an **Auto-follow** switch (on by default) that scrolls to the next section when a step finishes. Not supported yet: stdio servers, custom sign-in flows, MCP resources and
 prompts (only tools are inspected), and multi-call sessions.
@@ -151,7 +152,16 @@ docker build -t mcp-guardian .
 docker run -p 7860:7860 -e OPENROUTER_API_KEY=... mcp-guardian
 ```
 
-The image serves the web app, the API and the DVMCP lab on one port.
+The image serves the web app and the API on one port. The DVMCP lab (ten extra processes) is off by default
+(`GUARDIAN_LAB=on` starts it); without it the demo offers the offline attack stand-ins.
+
+### Render
+
+`render.yaml` is a blueprint for one Docker web service (health check `/health`). Set the secrets in the Render dashboard
+(`OPENROUTER_API_KEY`, the Langfuse keys, `GUARDIAN_PUBLIC_URL` = the service's own address for OAuth sign-in). Things to know
+about the free plan: it sleeps after 15 idle minutes (about a minute to wake), has no persistent disk (traces go to Langfuse, not to
+a local file), and the free model's daily quota is shared by every visitor, so only about 10 to 15 full runs a day are possible.
+The backend needs roughly 250 to 300 MB; the image has not been built on Render yet.
 
 ## Repository layout
 

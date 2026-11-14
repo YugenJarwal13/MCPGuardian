@@ -1,0 +1,26 @@
+# Render blueprint for MCP Guardian (one Docker web service).
+# Secrets are not stored here: set them in the Render dashboard (sync: false).
+services:
+  - type: web
+    name: mcp-guardian
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: LANGFUSE_PUBLIC_KEY
+        sync: false
+      - key: LANGFUSE_SECRET_KEY
+        sync: false
+      - key: LANGFUSE_BASE_URL
+        value: https://cloud.langfuse.com
+      - key: GUARDIAN_PUBLIC_URL        # the service's own address, for OAuth sign-in callbacks
+        sync: false
+      - key: GUARDIAN_ACCESS_KEY        # optional: require a key for runs
+        sync: false
+      - key: GUARDIAN_VERSION
+        value: render
+      - key: GUARDIAN_LAB               # "on" starts the ten DVMCP lab servers (needs far more memory than the free plan)
+        value: "off"

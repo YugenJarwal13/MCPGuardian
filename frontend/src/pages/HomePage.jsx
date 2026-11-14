@@ -105,6 +105,7 @@ export default function HomePage({ section }) {
             <div className="cta-row">
               <a className="btn primary lg" href={ROUTES.demo}>Watch the live demo <Arrow /></a>
               <a className="btn lg" href={ROUTES.testLive}>Check a server of your own</a>
+              <a className="btn lg" href={ROUTES.evals}>See the evaluations</a>
             </div>
             <div className="ticks">
               <span><i><Check /></i> CrewAI + Google ADK + A2A</span>

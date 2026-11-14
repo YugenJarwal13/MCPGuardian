@@ -5,6 +5,7 @@ import NavBar from "./components/NavBar.jsx";
 import { SketchDefs } from "./components/Sketch.jsx";
 import DemoPage from "./pages/DemoPage.jsx";
 import HomePage from "./pages/HomePage.jsx";
+import EvalsPage from "./pages/EvalsPage.jsx";
 import TestLivePage from "./pages/TestLivePage.jsx";
 import { useRoute } from "./router.js";
 import { useTheme } from "./theme.js";
@@ -46,7 +47,8 @@ export default function App() {
         </form>
       )}
       <ErrorBoundary key={route}>
-        {route === "testLive" ? <TestLivePage health={health} />
+        {route === "evals" ? <EvalsPage health={health} />
+          : route === "testLive" ? <TestLivePage health={health} />
           : route === "demo" ? <DemoPage health={health} />
           : <HomePage section={section} />}
       </ErrorBoundary>

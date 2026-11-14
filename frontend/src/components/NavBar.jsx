@@ -18,6 +18,7 @@ export default function NavBar({ route, section, health, theme, onToggleTheme })
           <a className="nav-link" href={ROUTES.results} aria-current={cur("home", "results")}>Results</a>
           <a className="nav-link" href={ROUTES.demo} aria-current={cur("demo")}>Live demo</a>
           <a className="nav-link" href={ROUTES.testLive} aria-current={cur("testLive")}>Check a server</a>
+          <a className="nav-link" href={ROUTES.evals} aria-current={cur("evals")}>Evaluations</a>
         </nav>
         <div className="nav-right">
           <span className="hide-sm"><LlmStatus health={health} /></span>

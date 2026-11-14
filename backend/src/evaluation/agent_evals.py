@@ -33,6 +33,7 @@ from src.config import BACKEND_ROOT, REPO_ROOT
 REPORTS = BACKEND_ROOT / "src" / "evaluation" / "reports"
 OUT_JSON = REPORTS / "agent_evals.json"
 OUT_MD = REPO_ROOT / "docs" / "agent_evaluation.md"
+OUT_WEB = REPO_ROOT / "frontend" / "src" / "data" / "agent_evals.json"      # what the web app's Evaluations page reads
 
 FULL = ["connect", "list_tools", "static_check", "tool_call", "runtime_check", "behavioral_check", "a2a_hop",
         "enforcement", "done"]
@@ -665,6 +666,13 @@ def _table(header: list[str], rows: list[list[Any]]) -> str:
     return "\n".join(out)
 
 
+def publish(results: dict) -> None:
+    """Write the written report and the copy the web app's Evaluations page shows."""
+    OUT_MD.write_text(render_report(results), encoding="utf-8")
+    OUT_WEB.parent.mkdir(parents=True, exist_ok=True)
+    OUT_WEB.write_text(json.dumps(results, default=str), encoding="utf-8")
+
+
 def render_report(r: dict) -> str:
     L: list[str] = ["# Agent evaluation", "",
                     "Every agent, and the communication between them, evaluated with `cd backend && python -m src.evaluation.agent_evals`. "
@@ -806,7 +814,7 @@ def main() -> None:
     ap.add_argument("--report-only", action="store_true", help="rewrite docs/agent_evaluation.md from the saved results")
     args = ap.parse_args()
     if args.report_only:
-        OUT_MD.write_text(render_report(json.loads(OUT_JSON.read_text(encoding="utf-8"))), encoding="utf-8")
+        publish(json.loads(OUT_JSON.read_text(encoding="utf-8")))
         print("report:", OUT_MD)
         return
     os.environ.setdefault("LLM_PROVIDER", "openrouter")
@@ -846,7 +854,7 @@ def main() -> None:
                              "judge_requests": prev.get("judge_requests", 0) + BUDGET.judge,
                              "quota_exhausted_at_end": BUDGET.quota_exhausted()}
         OUT_JSON.write_text(json.dumps(results, indent=1, default=str), encoding="utf-8")
-    OUT_MD.write_text(render_report(results), encoding="utf-8")
+    publish(results)
     print(json.dumps({k: v for k, v in results.items() if k == "budget"}))
     print("report:", OUT_MD)
 

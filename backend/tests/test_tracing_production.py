@@ -233,3 +233,29 @@ def test_a_pipeline_run_traces_the_mcp_call_the_visitor_and_the_run_usage(tmp_pa
     assert by["guardian.tool_call"]["attributes"]["langfuse.observation.type"] == "tool"
     assert by["guardian.static_check"]["attributes"]["langfuse.observation.type"] == "guardrail"
     assert len({s["trace_id"] for s in spans}) == 1                                        # the whole run is one trace
+
+
+def test_the_langfuse_dashboard_link_is_for_the_owner(monkeypatch):
+    monkeypatch.delenv("GUARDIAN_SHOW_LANGFUSE_LINK", raising=False)
+    monkeypatch.delenv("GUARDIAN_PUBLIC", raising=False)
+    assert obs.dashboard_link_visible() is True                      # local: shown
+    monkeypatch.setenv("GUARDIAN_PUBLIC", "1")
+    assert obs.dashboard_link_visible() is False                     # a public deployment: hidden by default
+    monkeypatch.setenv("GUARDIAN_SHOW_LANGFUSE_LINK", "on")
+    assert obs.dashboard_link_visible() is True                      # unless the owner opts in
+    monkeypatch.setenv("GUARDIAN_SHOW_LANGFUSE_LINK", "off")
+    monkeypatch.delenv("GUARDIAN_PUBLIC")
+    assert obs.dashboard_link_visible() is False
+
+
+def test_the_project_link_prefers_the_configured_address_and_needs_langfuse(monkeypatch):
+    assert obs.langfuse_project_url() is None                        # not configured under the test suite
+    monkeypatch.setenv("GUARDIAN_TEST_LANGFUSE", "1")
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-x")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-x")
+    monkeypatch.setenv("LANGFUSE_PROJECT_URL", "https://example.test/project/abc/")
+    assert obs.langfuse_project_url() == "https://example.test/project/abc"
+    monkeypatch.delenv("LANGFUSE_PROJECT_URL")
+    obs._PROJECT["url"] = None
+    assert obs.langfuse_project_url() == obs.langfuse_host()          # nothing looked up yet: Langfuse's home
+    assert obs.status()["dashboard_url"] is not None

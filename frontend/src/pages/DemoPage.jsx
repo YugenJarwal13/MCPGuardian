@@ -142,7 +142,8 @@ export default function DemoPage({ health }) {
       .then((data) => {
         setServers(data);
         const first = [...data.poisoned, ...data.clean].find((s) => s.id === "dvmcp-ch2" && s.live)
-          || data.poisoned.find((s) => s.live) || data.clean[0];
+          || data.poisoned.find((s) => s.live)
+          || data.poisoned.find((s) => !s.id.startsWith("dvmcp-")) || data.clean[0];
         if (first) selectServer(first);
       })
       .catch((e) => setFormError(`Cannot reach the API: ${e.message}. Start it with start-backend.cmd.`));
@@ -170,7 +171,9 @@ export default function DemoPage({ health }) {
   }, [ran, done, running, goTo]);
 
   const current = !ran ? (server ? 1 : 0) : running ? 2 : done ? 3 : 2;
-  const dvmcp = servers?.poisoned.filter((s) => s.id.startsWith("dvmcp-")) || [];
+  const labUp = !!servers?.poisoned.some((s) => s.id.startsWith("dvmcp-") && s.live);
+  // a hosted site has no lab: hide the ten lab cards instead of showing ten that cannot run
+  const dvmcp = health?.public_mode && !labUp ? [] : (servers?.poisoned.filter((s) => s.id.startsWith("dvmcp-")) || []);
   const fixtures = servers?.poisoned.filter((s) => !s.id.startsWith("dvmcp-")) || [];
   const serverLabel = server?.name?.replace(/^DVMCP\s*[-–:]?\s*/i, "DVMCP ");
 
@@ -204,9 +207,15 @@ export default function DemoPage({ health }) {
             {!servers && !formError && <p className="muted">Loading scenarios…</p>}
             {servers && (
               <>
-                <Group title="Attack scenarios" count={`${dvmcp.length} scenarios`}>
-                  {dvmcp.map((s) => <Card key={s.id} s={s} selected={server?.id === s.id} onSelect={onPick} disabled={running} />)}
-                </Group>
+                {dvmcp.length > 0 ? (
+                  <Group title="Attack scenarios" count={`${dvmcp.length} scenarios`}>
+                    {dvmcp.map((s) => <Card key={s.id} s={s} selected={server?.id === s.id} onSelect={onPick} disabled={running} />)}
+                  </Group>
+                ) : health?.public_mode && (
+                  <p className="muted" style={{ margin: "0 0 14px", fontSize: "var(--fs-sm)" }}>
+                    The ten DVMCP lab scenarios need the lab running, so they are not offered on this site. Run MCP Guardian locally to replay them; the offline stand-ins below work here.
+                  </p>
+                )}
                 {fixtures.length > 0 && (
                   <Group title="Offline stand-ins" count="no lab needed">
                     {fixtures.map((s) => <Card key={s.id} s={s} selected={server?.id === s.id} onSelect={onPick} disabled={running} />)}

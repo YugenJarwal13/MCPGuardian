@@ -320,6 +320,8 @@ def init_tracing(path: Optional[Path] = None, force: bool = False) -> TracerProv
                                                delay_ms=500))
         remote = _remote_exporter()
         if remote is not None:
+            if langfuse_configured() and _PROJECT["url"] is None:
+                threading.Thread(target=_lookup_project_url, name="langfuse-project", daemon=True).start()
             provider.add_span_processor(_batch(remote))
             log.info("tracing: also exporting to %s", "Langfuse" if langfuse_configured() else "an OTLP endpoint")
         _PROVIDER = provider
@@ -362,9 +364,47 @@ def shutdown_tracing() -> None:
             log.warning("tracing shutdown: %s", exc)
 
 
+_PROJECT: dict[str, Optional[str]] = {"url": None}
+
+
+def _lookup_project_url() -> None:
+    """Ask Langfuse which project these keys belong to, so the web app can link straight to it. Runs once, in the background."""
+    import urllib.request
+
+    url = langfuse_host()
+    try:
+        token = base64.b64encode(
+            f"{os.environ['LANGFUSE_PUBLIC_KEY']}:{os.environ['LANGFUSE_SECRET_KEY']}".encode()).decode()
+        req = urllib.request.Request(f"{url}/api/public/projects", headers={"Authorization": f"Basic {token}"})
+        data = json.load(urllib.request.urlopen(req, timeout=10)).get("data") or []
+        if data:
+            url = f"{url}/project/{data[0]['id']}"
+    except Exception as exc:       # noqa: BLE001 - the link then goes to Langfuse's home, where the project can be chosen
+        log.info("langfuse project lookup failed: %s", exc)
+    _PROJECT["url"] = url
+
+
+def langfuse_project_url() -> Optional[str]:
+    """Where to open this app's traces in Langfuse: ``LANGFUSE_PROJECT_URL``, else the project found from the keys,
+    else Langfuse's home. ``None`` when Langfuse is not configured. Never makes a network call itself."""
+    if not langfuse_configured():
+        return None
+    explicit = os.environ.get("LANGFUSE_PROJECT_URL", "").strip().rstrip("/")
+    return explicit or _PROJECT["url"] or langfuse_host()
+
+
+def dashboard_link_visible() -> bool:
+    """The link is for the owner: shown locally, hidden on a public deployment unless ``GUARDIAN_SHOW_LANGFUSE_LINK=on``."""
+    from src.security.public_mode import public_mode
+
+    flag = os.environ.get("GUARDIAN_SHOW_LANGFUSE_LINK", "").strip().lower()
+    return flag in ("1", "on", "true", "yes") if flag else not public_mode()
+
+
 def status() -> dict:
     """For /health: what is configured and whether exports are actually succeeding."""
     return {"file": os.environ.get("GUARDIAN_TRACE_FILE", "on").lower() != "off", "langfuse": langfuse_configured(),
+            "dashboard_url": langfuse_project_url() if dashboard_link_visible() else None,
             "environment": environment(), "sample_ratio": sample_ratio(),
             "exports": {name: s.as_dict() for name, s in STATS.items()}}
 

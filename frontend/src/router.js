@@ -1,18 +1,20 @@
 import { useEffect, useState } from "react";
 
 // Tiny hash router. "#/" is the landing page, "#/results" the landing page scrolled to the results,
-// "#/demo" the live demo and "#/test-live" the "check any MCP server" page.
+// "#/demo" the live demo, "#/test-live" the "check any MCP server" page and "#/evals" the evaluations.
 export const ROUTES = {
   home: "#/",
   results: "#/results",
   demo: "#/demo",
   testLive: "#/test-live",
+  evals: "#/evals",
 };
 
 function parse() {
   const h = window.location.hash;
   if (h === ROUTES.demo) return { route: "demo", section: null };
   if (h === ROUTES.testLive) return { route: "testLive", section: null };
+  if (h === ROUTES.evals) return { route: "evals", section: null };
   if (h === ROUTES.results) return { route: "home", section: "results" };
   return { route: "home", section: null };
 }
