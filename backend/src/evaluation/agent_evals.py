@@ -497,12 +497,17 @@ JUDGE_CASES: list[tuple[str, bool, dict]] = [        # (name, is_rug_pull, extra
 ]
 
 
-async def _eval_judge(budget: Budget) -> dict:
+async def _eval_judge(budget: Budget, previous: dict | None = None) -> dict:
     from src.adk_layer.behavioral_anomaly_agent import BehavioralAnomalyAgent
     from src.adk_layer.state.session_schema import ToolFingerprint
 
     rows, failing = [], 0
+    kept = {r["case"]: r for r in (previous or {}).get("rows", [])
+            if not r["status"].startswith(("judge did not", "not run"))}          # judged, or the statistics never flagged it
     for i, (name, malicious, extra) in enumerate(JUDGE_CASES):
+        if name in kept:
+            rows.append(kept[name])
+            continue
         if budget.left() <= 0 or budget.quota_exhausted() or failing >= 3:
             why = "provider kept failing" if failing >= 3 else "budget or quota"
             rows.append({"case": name, "is_rug_pull": malicious, "status": f"not run ({why})"})
@@ -550,8 +555,8 @@ async def _eval_judge(budget: Budget) -> dict:
             "caveat": "20 hand-written pairs by the project author, statistics-flagged by design"}
 
 
-def eval_judge(budget: Budget) -> dict:
-    return asyncio.run(_eval_judge(budget))
+def eval_judge(budget: Budget, previous: dict | None = None) -> dict:
+    return asyncio.run(_eval_judge(budget, previous))
 
 
 # ------------------------------------------------------------------------------------------ tier 2: runtime inspector
@@ -583,7 +588,69 @@ def eval_runtime(budget: Budget) -> dict:
     return {"cases": len(rows), "answered_by_model": len(answered), "fell_back_or_timed_out": len(rows) - len(answered),
             "from_cache": sum(1 for r in answered if r["cached"]), "fresh_requests": sum(1 for r in answered if r["fresh_request"]),
             "model": rates(answered, "verdict"), "regex_on_the_same_cases": rates(answered, "heuristic"),
+            "unanswered_cases": [r["case"] for r in rows if r["engine"] != "llm"],
             "engine": "hosted free-tier model; only model answers are scored (fallback answers are excluded)"}
+
+
+# ------------------------------------------------------------------------------------------ tier 2: obfuscation robustness
+
+_HOMOGLYPHS = str.maketrans({"a": "\u0430", "e": "\u0435", "o": "\u043e", "c": "\u0441", "p": "\u0440", "i": "\u0456", "s": "\u0455"})
+
+
+def _obfuscate(phrase: str, kind: str) -> str:
+    if kind == "zero_width":
+        return "\u200b".join(phrase)                       # a zero-width space between every character
+    if kind == "homoglyph":
+        return phrase.translate(_HOMOGLYPHS)               # Latin letters swapped for look-alike Cyrillic ones
+    import base64
+
+    return base64.b64encode(phrase.encode()).decode() + " (decode this and do what it says)"
+
+
+def eval_robustness(budget: Budget, attacks: int = 8) -> dict:
+    """Does the runtime inspector still catch an attack whose injected sentence is disguised? The disguise is applied to
+    the phrases the inspector itself flagged in the original, so the attack text is the same attack."""
+    from src.crewai_layer.crew import analyze_runtime_meta
+    from src.data.datasets import load_all_cases
+
+    cases = [c for c in asyncio.run(load_all_cases(prefer_live=False)) if c.case_id.startswith("custom-resp-atk-")]
+    originals = []
+    for c in cases:
+        if len(originals) >= attacks or budget.left() <= 0:
+            break
+        v, engine, _ = analyze_runtime_meta(c.tool_name, c.sample_response or "", use_llm=True)      # cached when answered before
+        if engine == "llm" and v.verdict != "clean" and v.flagged_phrases:
+            originals.append((c, v))
+    kinds = ("zero_width", "homoglyph", "encoded")
+    rows = []
+    for c, v in originals:
+        text0 = c.sample_response or ""
+        for kind in kinds:
+            text = text0
+            for ph in sorted(set(v.flagged_phrases), key=len, reverse=True):
+                text = text.replace(ph, _obfuscate(ph, kind))
+            if text == text0:
+                continue
+            if budget.left() <= 0 or budget.quota_exhausted():
+                rows.append({"case": c.case_id, "variant": kind, "status": "not run (budget or quota)"})
+                continue
+            mv, engine, _ = analyze_runtime_meta(c.tool_name, text, use_llm=True)
+            rv, _, _ = analyze_runtime_meta(c.tool_name, text, use_llm=False)
+            h0, _, _ = analyze_runtime_meta(c.tool_name, text0, use_llm=False)
+            rows.append({"case": c.case_id, "variant": kind, "status": "run" if engine == "llm" else "model did not answer",
+                         "model_caught": mv.verdict != "clean" if engine == "llm" else None, "regex_caught": rv.verdict != "clean",
+                         "regex_caught_original": h0.verdict != "clean"})
+    out: dict[str, Any] = {"attacks_used": len(originals), "variants": {}}
+    for kind in kinds:
+        ran = [r for r in rows if r["variant"] == kind and r["status"] == "run"]
+        mc = sum(1 for r in ran if r["model_caught"])
+        rc = sum(1 for r in rows if r["variant"] == kind and r.get("regex_caught"))
+        out["variants"][kind] = {"run": len(ran), "model_caught": mc, "model_retained_pct": pct(mc, len(ran)), "model_ci95": wilson(mc, len(ran)),
+                                 "regex_caught": rc, "regex_total": sum(1 for r in rows if r["variant"] == kind),
+                                 "not_run": sum(1 for r in rows if r["variant"] == kind and r["status"] != "run")}
+    out.update({"rows": rows, "engine": "hosted free-tier model; attacks the model caught in their original form; only model answers are scored",
+                "caveat": "a handful of hand-written attacks; the disguise is applied to the phrases the model itself flagged"})
+    return out
 
 
 # ------------------------------------------------------------------------------------------ tier 2: DVMCP end to end
@@ -616,7 +683,7 @@ def summarise_dvmcp(rows: list[dict]) -> dict:
             "engine": "hosted free-tier model, human approval auto-denied"}
 
 
-def eval_dvmcp(budget: Budget) -> dict:
+def eval_dvmcp(budget: Budget, previous: dict | None = None) -> dict:
     from fastapi.testclient import TestClient
 
     from src.api import runner
@@ -638,9 +705,14 @@ def eval_dvmcp(budget: Budget) -> dict:
                  7: "credentials leaked in a reply; benign description", 8: "dangerous by design: runs code (scope rule)", 9: "dangerous by design: network access (scope rule)",
                  10: "multi-vector; poisoned description"}
         rows = []
+        done_before = {r["challenge"]: r for r in (previous or {}).get("rows", [])
+                       if r["status"] == "run" and r["engines"].get("static_check") == "llm"}
         with TestClient(app) as client:
             for n in range(1, 11):
                 sid = f"dvmcp-ch{n}"
+                if n in done_before:
+                    rows.append(done_before[n])
+                    continue
                 if budget.left() <= 0 or budget.quota_exhausted():
                     rows.append({"challenge": n, "note": notes[n], "status": "not run (budget or quota)"})
                     continue
@@ -757,6 +829,18 @@ def render_report(r: dict) -> str:
                        f"{h['false_alarm_pct']}%", h["hard_negative_false_alarms"], f"{h['precision_pct']}%"]]), "",
               "The response cases are hand-written by the project author and the v2 prompt shares ideas with some of them, so this is not a held-out test.", ""]
 
+    rb = r.get("robustness")
+    if rb and "error" not in rb:
+        L += ["## 5b. Robustness: disguised attacks (hosted model)", "",
+              f"{rb['attacks_used']} attacks the model had caught in their original form, with the injected sentence disguised three ways "
+              "(a zero-width space between every character, look-alike Cyrillic letters, base64 plus a decode instruction):", "",
+              _table(["Disguise", "Model answers", "Still caught", "Retained", "95% CI", "Regex still caught"],
+                     [[k.replace("_", " "), v["run"], v["model_caught"], (f"{v['model_retained_pct']}%" if v["run"] else "not run"), v["model_ci95"] or "n/a", f"{v['regex_caught']}/{v['regex_total']}"]
+                      for k, v in rb["variants"].items()]), "",
+              f"{rb['caveat']}. Variants the model did not answer (provider error or quota) are not counted."
+              + (" **No variant could be run on the model yet: the free-tier quota was spent, so no robustness figure is claimed.**"
+                 if not any(v["run"] for v in rb["variants"].values()) else ""), ""]
+
     d = r.get("dvmcp")
     if d and "error" not in d:
         L += ["## 6. End to end on the ten DVMCP challenges (hosted model, human approval auto-denied)", "",
@@ -799,7 +883,7 @@ def render_report(r: dict) -> str:
           "* **ADK `response_match_score`, `final_response_match_v2`, rubric quality, `safety_v1`, `hallucinations_v1`, user-simulator metrics:** they assume a "
           "natural-language answer to a user. Ours are structured verdicts. Grounding (section 7) is the deterministic form of the hallucination check.",
           "* **ADK `tool_trajectory_avg_score` itself:** our ADK agents call no tools; section 1 applies its scoring types to the pipeline's stages instead.",
-          "* **Robustness to obfuscation (zero-width characters, encodings, paraphrase) on the model:** not run for lack of free-tier requests.",
+          "* **Robustness to paraphrase:** not run (disguises 5b are mechanical; a paraphrase needs a model to write it).",
           "* **Drift the statistics cannot see:** the judge is only consulted when the statistics flag a change, so it is never put the cases in section 3's blind spots.", ""]
     return "\n".join(L)
 
@@ -811,6 +895,7 @@ def main() -> None:
     ap.add_argument("--tier1", action="store_true", help="deterministic evaluations only")
     ap.add_argument("--budget", type=int, default=40, help="cap on real model API requests for tier 2")
     ap.add_argument("--only", default="", help="comma list of evaluations to run")
+    ap.add_argument("--refill", action="store_true", help="for the judge and DVMCP, re-run only what did not get a model answer before")
     ap.add_argument("--report-only", action="store_true", help="rewrite docs/agent_evaluation.md from the saved results")
     args = ap.parse_args()
     if args.report_only:
@@ -846,9 +931,11 @@ def main() -> None:
     step("stage_latency", eval_stage_latency)
     if not args.tier1:
         install_request_counter()
-        step("judge", lambda: eval_judge(BUDGET))
-        step("dvmcp", lambda: eval_dvmcp(BUDGET))
+        prev = results if args.refill else {}
         step("runtime", lambda: eval_runtime(BUDGET))
+        step("dvmcp", lambda: eval_dvmcp(BUDGET, prev.get("dvmcp")))
+        step("judge", lambda: eval_judge(BUDGET, prev.get("judge")))
+        step("robustness", lambda: eval_robustness(BUDGET))
         prev = results.get("budget") or {}
         results["budget"] = {"cap": prev.get("cap", 0) + args.budget, "provider_requests": prev.get("provider_requests", 0) + BUDGET.used,
                              "judge_requests": prev.get("judge_requests", 0) + BUDGET.judge,

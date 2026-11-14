@@ -126,6 +126,15 @@ function Runtime() {
       ) : (
         <div className="notice warn"><Alert width={14} height={14} style={{ verticalAlign: -2 }} /> The hosted-model run on these cases has not completed yet (free-tier quota). The local-model numbers above stand; no hosted-model number is claimed.</div>
       )}
+      {E.robustness && !E.robustness.error && (
+        <>
+          <h3 className="sub">Disguised attacks</h3>
+          <p className="muted" style={{ margin: 0 }}>{E.robustness.attacks_used} attacks the model had caught, with the injected sentence disguised three ways. Variants the model did not answer are not counted.</p>
+          <Tbl head={["Disguise", "Model answers", "Still caught", "Retained", "95% interval", "Regex still caught"]}
+            rows={Object.entries(E.robustness.variants).map(([k, v]) => [k.replaceAll("_", " "), v.run, v.model_caught, v.run ? pc(v.model_retained_pct) : "not run", v.model_ci95 ? `${v.model_ci95.join(" to ")}%` : "n/a", `${v.regex_caught}/${v.regex_total}`])} />
+          <How>Zero-width space between every character, look-alike Cyrillic letters, and base64 with a decode instruction. The disguise is applied to the phrases the model itself flagged, so it is the same attack. {E.robustness.caveat}.</How>
+        </>
+      )}
       <div className="panel"><div className="panel-title">Evidence is really in the reply</div>
         <p className="big">{pc(gr.grounded_phrases_pct)}</p>
         <p className="muted">of {gr.phrases} flagged phrases in {gr.cases_with_phrases} cases appear verbatim in the reply they came from.</p></div>
