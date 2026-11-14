@@ -142,7 +142,7 @@
 .dcard .nm { font: 700 1.5rem var(--font-display); letter-spacing: -0.02em; }
 .dcard .by { font-size: var(--fs-sm); color: var(--text-3); }
 .dcard ul { margin: 6px 0 0; padding-left: 18px; color: var(--text-2); }
-.dcard li { margin: 4px 0; }
+.dcard li { margin: 4px 0; font: 400 1.0125rem/1.6 var(--font-sans, Inter, system-ui, sans-serif); letter-spacing: 0; }
 .dcard .used { margin-top: auto; padding-top: 14px; border-top: 1px dashed var(--border-strong); font-size: var(--fs-sm); color: var(--text-2); }
 .dcard a.ext { font-weight: 600; }
 

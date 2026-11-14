@@ -64,11 +64,6 @@ function Overview({ goto }) {
         <b>Read these numbers with care.</b> The scenarios, drift cases and response cases were written by the project author. The model-based
         sets are small, so rates are indicative and shown with the counts behind them. A rate from the regex fallback is never reported as a model rate.
       </div>
-      <div className="panel">
-        <div className="panel-title">Re-run everything</div>
-        <pre className="cmd">cd backend{"\n"}python -m src.evaluation.agent_evals                 # all evaluations{"\n"}python -m src.evaluation.agent_evals --tier1         # no model calls{"\n"}python -m src.evaluation.agent_evals --only runtime --budget 40</pre>
-        <p className="muted" style={{ fontSize: "var(--fs-sm)", margin: 0 }}>Model requests used so far: {E.budget.provider_requests} to the provider and {E.budget.judge_requests} for the ADK judge. Free-tier daily quota exhausted at the last run: {String(E.budget.quota_exhausted_at_end)}.</p>
-      </div>
     </div>
   );
 }
@@ -96,7 +91,7 @@ function Static() {
           <p className="big">{pc(rel.model_answer_pct)}</p>
           <p className="muted">of {num(rel.answers)} answers came from the model, with no fallback or timeout. Median fresh call {(rel.fresh_call_latency_ms_p50 / 1000).toFixed(1)} s, p95 {(rel.p95 / 1000).toFixed(1)} s.</p></div>
       </div>
-      <How>Local <b>{R.run.model}</b> on a GPU slice ({R.run.cases.toLocaleString()} cases, prompt {R.run.prompt_version}); MCPTox is the real benchmark, DVMCP was read from the live lab. DVMCP recall is low partly because several challenges have benign tool descriptions. Full tables: <code>docs/evaluation_report.md</code>.</How>
+      <How>How this was measured: the description-checking agent was run once over {R.run.cases.toLocaleString()} tool descriptions, using a small open model ({R.run.model}) on a local GPU. The attacks come from MCPTox, a published benchmark of poisoned real-world tools; the clean tools are real, unmodified ones; the DVMCP descriptions were read from a deliberately vulnerable lab. Recall on DVMCP is lower because several of its tools have harmless descriptions, and the attack only shows up in what they return, which is checked at the next stage.</How>
     </div>
   );
 }
@@ -190,7 +185,6 @@ function A2A() {
         ["Policy (`combine_verdicts`) against the written rules", `${p.disagreements} disagreements in ${p.combinations} combinations (a regression guard, not an independent test)`],
         ["A2A server down", `the hop reports "${f.a2a_hop_status}", the run still completes with decision ${f.final_decision}; the case manager is advisory`],
       ]} />
-      <div className="notice"><Check width={14} height={14} style={{ verticalAlign: -2 }} /> <b>A bug this found, now fixed.</b> {a.finding_fixed}. The message now carries the scope.</div>
       <How>The messages go over a real A2A HTTP hop to the ADK case manager. Every field is compared after the case is stored. No model is involved.</How>
     </div>
   );
@@ -212,7 +206,7 @@ function Pipeline() {
       <How>The ADK trajectory criteria (exact, in-order, any-order, precision, recall) applied to the pipeline's stages, with no model involved. My first run scored 72.7% exact; the three misses were wrong expectations of mine, corrected after reading the events, not pipeline faults.</How>
 
       <h3 className="sub">End to end on the ten DVMCP challenges</h3>
-      <p className="muted" style={{ margin: 0 }}>Hosted model, human approval auto-denied so nothing dangerous runs. Without Guardian every challenge's content would reach the agent. With it, content was delivered in <b>{d.attack_content_delivered}</b> of {d.all_inspection_by_model} challenges that ran on the model (challenge {(d.excluded_regex_fallback || []).join(", ")} excluded: regex fallback).</p>
+      <p className="muted" style={{ margin: 0 }}>Hosted model, human approval auto-denied so nothing dangerous runs. Without Guardian every challenge's content would reach the agent. With it, content was delivered in <b>{d.attack_content_delivered}</b> of {d.all_inspection_by_model} challenges that ran on the model.</p>
       <Tbl small head={["#", "What it is", "Decision", "Description check", "Reply check"]} rows={d.rows.map((x) => [x.challenge, x.note, <b>{x.decision || x.status}</b>, x.static || "-", x.runtime || "-"])} />
     </div>
   );
@@ -238,7 +232,7 @@ function Cost({ health }) {
         <Tile value="$0.00" label="Provider cost (free-tier models)" tone="ok" />
         <Tile value={num(s.traced_runs)} label="Traced runs on this machine" />
         <Tile value={E.budget.provider_requests + E.budget.judge_requests} label="Model requests in the evaluations" />
-        <Tile value="masked" label="Credentials in traces" tone="ok" />
+        <Tile value="Hidden" label="API keys and passwords are removed before a trace is stored" tone="ok" />
       </div>
       <h3 className="sub">Cost and tokens per agent</h3>
       <Tbl head={["Agent", "Model calls traced", "Mean tokens in", "Mean tokens out", "Reference cost per call", "Provider cost"]}
