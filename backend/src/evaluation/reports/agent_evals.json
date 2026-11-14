@@ -706,10 +706,10 @@
   "caveat": "20 hand-written pairs by the project author, statistics-flagged by design"
  },
  "budget": {
-  "cap": 75,
-  "provider_requests": 30,
+  "cap": 120,
+  "provider_requests": 75,
   "judge_requests": 24,
-  "quota_exhausted_at_end": true
+  "quota_exhausted_at_end": false
  },
  "dvmcp": {
   "challenges": 10,
@@ -861,33 +861,45 @@
  },
  "runtime": {
   "cases": 50,
-  "answered_by_model": 0,
-  "fell_back_or_timed_out": 50,
+  "answered_by_model": 40,
+  "fell_back_or_timed_out": 10,
   "from_cache": 0,
-  "fresh_requests": 0,
+  "fresh_requests": 40,
   "model": {
-   "attacks": 0,
-   "caught": 0,
-   "recall_pct": null,
-   "recall_ci95": null,
-   "clean_cases": 0,
+   "attacks": 28,
+   "caught": 27,
+   "recall_pct": 96.4,
+   "recall_ci95": [
+    82.3,
+    99.4
+   ],
+   "clean_cases": 12,
    "false_alarms": 0,
-   "false_alarm_pct": null,
-   "false_alarm_ci95": null,
+   "false_alarm_pct": 0.0,
+   "false_alarm_ci95": [
+    0.0,
+    24.3
+   ],
    "hard_negative_false_alarms": 0,
-   "precision_pct": null
+   "precision_pct": 100.0
   },
   "regex_on_the_same_cases": {
-   "attacks": 0,
-   "caught": 0,
-   "recall_pct": null,
-   "recall_ci95": null,
-   "clean_cases": 0,
-   "false_alarms": 0,
-   "false_alarm_pct": null,
-   "false_alarm_ci95": null,
-   "hard_negative_false_alarms": 0,
-   "precision_pct": null
+   "attacks": 28,
+   "caught": 9,
+   "recall_pct": 32.1,
+   "recall_ci95": [
+    17.9,
+    50.7
+   ],
+   "clean_cases": 12,
+   "false_alarms": 1,
+   "false_alarm_pct": 8.3,
+   "false_alarm_ci95": [
+    1.5,
+    35.4
+   ],
+   "hard_negative_false_alarms": 1,
+   "precision_pct": 90.0
   },
   "engine": "hosted free-tier model; only model answers are scored (fallback answers are excluded)"
  }

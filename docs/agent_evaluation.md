@@ -2,7 +2,7 @@
 
 Every agent, and the communication between them, evaluated with `cd backend && python -m src.evaluation.agent_evals`. Tier 1 needs no model. Tier 2 uses the hosted free-tier model for a small, counted number of requests; when the budget or the daily quota ran out the remainder is reported as not run, never as a pass, and an answer from the regex fallback is never counted as a model answer. Raw results: `backend/src/evaluation/reports/agent_evals.json`.
 
-**Model requests used:** 30 to the provider and 24 for the ADK judge (cap 75); quota exhausted at the end: True.
+**Model requests used:** 75 to the provider and 24 for the ADK judge (cap 120); quota exhausted at the end: False.
 
 ## 1. Pipeline trajectory (the ADK trajectory criteria, applied to the pipeline's stages)
 
@@ -76,9 +76,16 @@ Of the judged cases: caught 4 of 4 rug pulls (recall 100.0%), raised 0 false ala
 
 20 hand-written pairs by the project author, statistics-flagged by design. n is small; read the rates as indicative.
 
-## 5. The runtime inspector on the hosted model: NOT RUN
+## 5. The runtime inspector (hosted model, the 50 response cases)
 
-All 50 response cases fell back to the regex because the free-tier quota was already spent by the earlier steps, so nothing is scored and no number is claimed. The runtime inspector's existing results are in `docs/evaluation_report.md` (local model on the same 50 cases, plus a small hosted-model sample).
+40 of 50 cases were answered by the model (0 from the cache, 40 fresh requests); 10 fell back and are excluded.
+
+|  | Attacks caught | Recall | 95% CI | False alarms on clean | Rate | Hard-negative false alarms | Precision |
+|---|---|---|---|---|---|---|---|
+| Model | 27/28 | 96.4% | [82.3, 99.4] | 0/12 | 0.0% | 0 | 100.0% |
+| Regex, same cases | 9/28 | 32.1% | [17.9, 50.7] | 1/12 | 8.3% | 1 | 90.0% |
+
+The response cases are hand-written by the project author and the v2 prompt shares ideas with some of them, so this is not a held-out test.
 
 ## 6. End to end on the ten DVMCP challenges (hosted model, human approval auto-denied)
 
