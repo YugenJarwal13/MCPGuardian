@@ -251,10 +251,21 @@ class _Run:
         if spec.url:
             if not await self._prepare_custom(where):
                 return
-        elif spec.port is not None and not spec.is_live():
-            await em.emit("connect", "error", f"Cannot reach {where}. Start the lab: python scripts/run_dvmcp_native.py")
-            await em.emit("done", "error", "Run aborted — server offline.")
-            return
+        elif spec.port is not None:
+            from src.api import lab
+
+            if lab.lazy() and not spec.is_up():
+                await em.emit("connect", "started", f"Starting the {spec.name} lab server (on demand)…")
+            try:
+                await lab.ensure_for(spec)
+            except lab.LabError as exc:
+                await em.emit("connect", "error", str(exc))
+                await em.emit("done", "error", "Run aborted — the lab server could not be started.")
+                return
+            if not spec.is_up():
+                await em.emit("connect", "error", f"Cannot reach {where}. Start the lab: python scripts/run_dvmcp_native.py")
+                await em.emit("done", "error", "Run aborted — server offline.")
+                return
         try:
             session_cm = open_session(spec)
             session = await session_cm.__aenter__()

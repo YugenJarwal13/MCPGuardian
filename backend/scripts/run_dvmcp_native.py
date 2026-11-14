@@ -130,4 +130,6 @@ if __name__ == "__main__":
     ap.add_argument("--one", type=int, choices=sorted(CHALLENGE_DIRS))
     ap.add_argument("--variant", choices=("full", "sse"), default="full")
     args = ap.parse_args()
+    if args.one:
+        _prepare_state_dirs()        # fresh state each start (challenge 4's rug-pull counter begins in its benign phase)
     run_one(args.one, args.variant) if args.one else run_all(args.variant)

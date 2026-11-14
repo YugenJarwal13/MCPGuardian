@@ -153,7 +153,7 @@ docker run -p 7860:7860 -e OPENROUTER_API_KEY=... mcp-guardian
 ```
 
 The image serves the web app and the API on one port. The DVMCP lab (ten extra processes) is off by default
-(`GUARDIAN_LAB=on` starts it); without it the demo offers the offline attack stand-ins.
+(`GUARDIAN_LAB=lazy` starts only the challenge server that is picked and stops it when idle; `on` starts all ten); without it the demo offers the offline attack stand-ins.
 
 ### Render
 

@@ -22,5 +22,5 @@ services:
         sync: false
       - key: GUARDIAN_VERSION
         value: render
-      - key: GUARDIAN_LAB               # "on" starts the ten DVMCP lab servers (needs far more memory than the free plan)
-        value: "off"
+      - key: GUARDIAN_LAB               # lazy: start only the DVMCP challenge server that is picked (~25 MB each, stopped when idle)
+        value: lazy                     # "on" starts all ten (needs ~200 MB more); "off" hides the lab on this site

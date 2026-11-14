@@ -108,6 +108,15 @@ class ServerSpec:
                 return False
         if self.port is None:
             return False
+        if self.is_up():
+            return True
+        from src.api import lab
+
+        return lab.lazy() and lab.installed()          # not running yet, but starts when it is picked
+
+    def is_up(self) -> bool:
+        if self.port is None:
+            return False
         try:
             with socket.create_connection((DVMCP_HOST, self.port), timeout=0.3):
                 return True
@@ -122,6 +131,8 @@ class ServerSpec:
         if self.port is not None:
             d["port"] = self.port
             d["live"] = self.is_live()
+            d["up"] = self.is_up()
+            d["on_demand"] = d["live"] and not d["up"]
         else:
             d["live"] = False
         if self.flips_after is not None:
@@ -344,6 +355,12 @@ async def list_server_tools(server_id: str) -> list[dict]:
         raise HTTPException(404, f"unknown server '{server_id}'")
     if spec.port is not None and not spec.is_live():
         raise HTTPException(503, f"{spec.name} is not running on port {spec.port}")
+    from src.api import lab
+
+    try:
+        await lab.ensure_for(spec)
+    except lab.LabError as exc:
+        raise HTTPException(503, str(exc))
     async with open_session(spec) as session:
         listed = await list_all_tools(session)
     tools = []

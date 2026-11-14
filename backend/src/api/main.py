@@ -35,9 +35,13 @@ async def lifespan(app: FastAPI):
         app.state.manager = manager
         app.state.a2a_url = a2a_url
         app.state.a2a_client = client
+        from src.api import lab
+
+        lab.MANAGER.start_reaper()
         try:
             yield
         finally:
+            await lab.MANAGER.shutdown()          # stop any on-demand lab servers
             await client.aclose()
             shutdown_tracing()          # send what is still queued before the process exits
 
@@ -63,12 +67,13 @@ def health() -> dict:
     if uses_chain():
         llm["chain"] = get_chain().describe()
         llm["events"] = get_chain().events[-5:]
+    from src.api.lab import mode as lab_mode
     from src.observability import status as tracing_status
     from src.security.public_mode import limiter, public_mode
 
     pub = public_mode()
     return {"ok": True, "llm_available": available, "llm": llm, "a2a_url": app.state.a2a_url,
-            "stages": STAGES, "public_mode": pub, "access_required": access_required(),
+            "stages": STAGES, "public_mode": pub, "lab": lab_mode(), "access_required": access_required(),
             "llm_runs_left_today": limiter().llm_runs_left() if pub else None,
             "tracing": tracing_status()}
 
