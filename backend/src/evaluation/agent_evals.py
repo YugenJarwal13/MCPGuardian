@@ -516,10 +516,17 @@ async def _eval_judge(budget: Budget, previous: dict | None = None) -> dict:
         body.setdefault("note", "x" * 40)
         text = json.dumps(body)
         rep = None
-        for attempt in range(3):                       # an upstream provider error is transient: retry, rebuilding the state each time
+        from google.adk.models.lite_llm import LiteLlm
+        from src.llm_chain import _PLACEHOLDER_SLUGS
+
+        alternates = [None] + [f"openrouter/{v}" for v in _PLACEHOLDER_SLUGS.values()]     # the configured judge, then each free model
+        used_model = None
+        for attempt, alt in enumerate(alternates):     # a provider error on one model: retry, then try the next free model
             if budget.left() <= 0:
                 break
-            agent = BehavioralAnomalyAgent(use_llm=True)
+            used_model = alt
+            agent = BehavioralAnomalyAgent(use_llm=True, model=None if alt is None else
+                                           LiteLlm(model=alt, max_tokens=2500, extra_body={"reasoning": {"effort": "low"}}))
             fp = ToolFingerprint(tool_id=f"judge-eval-{i}")
             for warm in WARM(random.Random(100 + i)):
                 fp, _ = await agent.analyze_async(fp, warm, set(json.loads(warm)), 20.0)
@@ -527,7 +534,7 @@ async def _eval_judge(budget: Budget, previous: dict | None = None) -> dict:
             fp, rep = await agent.analyze_async(fp, text, set(body), 20.0)
             if not rep.statistical_anomaly or rep.engine == "llm":
                 break
-            await asyncio.sleep(20)
+            await asyncio.sleep(3)
         if rep is None:
             rows.append({"case": name, "is_rug_pull": malicious, "status": "not run (budget or quota)"})
         elif not rep.statistical_anomaly:
@@ -535,10 +542,10 @@ async def _eval_judge(budget: Budget, previous: dict | None = None) -> dict:
                          "escalated": False})
         elif rep.engine != "llm":
             failing += 1
-            rows.append({"case": name, "is_rug_pull": malicious, "status": "judge did not answer (provider error after 3 tries)", "escalated": True})
+            rows.append({"case": name, "is_rug_pull": malicious, "status": f"judge did not answer (provider error after {len(alternates)} tries across the free models)", "escalated": True})
         else:
             failing = 0
-            rows.append({"case": name, "is_rug_pull": malicious, "status": "judged", "escalated": bool(rep.is_anomalous),
+            rows.append({"case": name, "is_rug_pull": malicious, "status": "judged", "escalated": bool(rep.is_anomalous), "judge_model": used_model or "configured default",
                          "explanation": (rep.explanation or "")[:160]})
     judged = [r for r in rows if r["status"] == "judged"]
     tp = sum(1 for r in judged if r["is_rug_pull"] and r["escalated"])
@@ -803,7 +810,10 @@ def render_report(r: dict) -> str:
         L += ["## 4. The ADK behaviour judge (hosted model)", "",
               f"{j['cases']} hand-written drift cases (10 rug pulls, 10 benign drifts), all built so the statistics flag them and the judge decides. "
               f"Judged: {j['judged']}; statistics did not flag: {j['stats_did_not_flag']}; judge gave no answer: {j['judge_no_answer']}"
-              + (" (the hosted provider rejected those two requests with HTTP 400 on every retry, so they are not counted)" if j['judge_no_answer'] else "") + f"; not run: {j['not_run']}.", ""]
+              + (" (the hosted provider rejected those requests with HTTP 400 on every retry, so they are not counted)" if j['judge_no_answer'] else "") + f"; not run: {j['not_run']}.", ""]
+        alt = [r["case"] for r in j["rows"] if r.get("judge_model") not in (None, "configured default")]
+        if alt:
+            L += [f"{len(alt)} case(s) ({', '.join(alt)}) were rejected by the default judge model's provider (HTTP 400) and were judged by Nemotron instead; the rest used the default model.", ""]
         if j["judged"]:
             L += [f"Of the judged cases: caught {j['true_pos']} of {j['true_pos'] + j['false_neg']} rug pulls (recall {j['recall_pct']}%), "
                   f"raised {j['false_pos']} false alarm(s) on {j['false_pos'] + j['true_neg']} benign drifts (false-alarm rate {j['false_alarm_pct']}%, "

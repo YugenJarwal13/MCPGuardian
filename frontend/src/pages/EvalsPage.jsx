@@ -161,7 +161,7 @@ function Behaviour() {
         <Tile value={j.stats_did_not_flag} label="Never reached the judge (statistics missed them)" tone="bad" />
         <Tile value={j.judge_no_answer} label="No answer (provider error)" />
       </div>
-      <p className="muted" style={{ margin: 0 }}>{j.judged} of {j.cases} hand-written cases were judged. {j.caveat}.</p>
+      <p className="muted" style={{ margin: 0 }}>{j.judged} of {j.cases} hand-written cases were judged. {j.caveat}.{j.rows.some((x) => x.judge_model && x.judge_model !== "configured default") ? " Two cases were rejected by the default model's provider and were judged by Nemotron, another free model." : ""}</p>
       <details className="under-hood"><summary>All {j.cases} cases</summary>
         <div><Tbl small head={["Case", "Rug pull?", "Result"]} rows={j.rows.map((x) => [x.case, x.is_rug_pull ? "yes" : "no", x.status === "judged" ? (x.escalated ? "escalated" : "not escalated") : x.status])} /></div></details>
     </div>
