@@ -2,13 +2,14 @@
 # Removes what provision.sh created, and only that: resources that carry the tag GuardianDeployment=<GUARDIAN_NAME>, in
 # the given region and (where the resource type has a VPC) the default VPC. Nothing untagged, nothing matched by name.
 #
-#   export AWS_PROFILE=guardian
+#   export AWS_PROFILE=guardian-login      # the default if AWS_PROFILE is not set
 #   GUARDIAN_AWS_ACCOUNT=<12-digit account id> AWS_REGION=ap-south-1 bash deploy/aws/teardown.sh
 #
 # GUARDIAN_AWS_ACCOUNT is required and must equal the account you are signed in to. The script lists everything it found,
 # refuses to go on if the picture is ambiguous (duplicates, an Elastic IP attached to something else), and deletes
 # nothing until you type the confirmation line it prints. Detached volumes are reported, never deleted.
 set -euo pipefail
+export AWS_PROFILE="${AWS_PROFILE:-guardian-login}"      # the verified CLI profile; an AWS_PROFILE you set yourself wins
 
 REGION="${AWS_REGION:-ap-south-1}"
 GUARDIAN_NAME="${GUARDIAN_NAME:-mcp-guardian}"        # not NAME: some shells already set that

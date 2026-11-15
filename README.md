@@ -147,9 +147,9 @@ bash scripts/run_full_local_eval.sh                  # all cases with a local Ol
 
 ## Docker and AWS
 
-`docker-compose.yml` runs three containers: `web` (the React app and HTTPS), `backend` (the API) and `dvmcp-lab` (the ten DVMCP
+`docker-compose.yml` runs three containers: `web` (the React app and the reverse proxy), `backend` (the API) and `dvmcp-lab` (the ten DVMCP
 servers, reachable only from the backend). Each has its own Dockerfile and `.dockerignore`. The steps for an AWS EC2 instance
-(provisioning script, DNS, keys, start, checks, updates) are in [`docs/deployment.md`](docs/deployment.md).
+(provisioning script, keys, start, checks, updates; plain HTTP on the Elastic IP, no domain needed) are in [`docs/deployment.md`](docs/deployment.md).
 
 ## Repository layout
 

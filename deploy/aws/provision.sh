@@ -10,17 +10,25 @@
 #   - an existing instance whose VPC, type, security group, key pair, tag, IMDSv2 setting, root volume (encrypted, gp3,
 #     DISK_GB) or CPU credit mode differ from the intended ones, or cannot be read (it is never modified);
 #   - an Elastic IP attached to some other instance.
-# Intended inbound rules: TCP 22 from your one IPv4 /32, TCP 80 and TCP/UDP 443 from 0.0.0.0/0. Nothing else, no IPv6.
+# Intended inbound rules: TCP 22 from your one IPv4 /32 and TCP 80 from 0.0.0.0/0. Nothing else, no IPv6. (The HTTP-only
+# deployment has no use for 443; ALLOW_HTTPS=yes adds TCP/UDP 443 for a later HTTPS setup.)
 #
-#   export AWS_PROFILE=guardian            # a profile created with `aws configure --profile guardian`
-#   AWS_REGION=ap-south-1 INSTANCE_TYPE=t3.medium bash deploy/aws/provision.sh
+# Run it from the repository root. It uses the AWS CLI profile guardian-login unless AWS_PROFILE says otherwise:
+#   export AWS_PROFILE=guardian-login
+#   AWS_REGION=ap-south-1 bash deploy/aws/provision.sh                      # default type: c7i-flex.large
+#   AWS_REGION=ap-south-1 INSTANCE_TYPE=t3.medium bash deploy/aws/provision.sh   # another type, only if you pass it
+# INSTANCE_TYPE must be a type your account and your IAM policy (ec2:InstanceType condition) allow. 4 GiB or more is needed to
+# build the images. c7i-flex.large is not burstable, so no CPU-credit setting applies; burstable types get CpuCredits=standard.
 #
 # Costs money while it exists (instance, disk, Elastic IP): tear it down with deploy/aws/teardown.sh.
 set -euo pipefail
+export AWS_PROFILE="${AWS_PROFILE:-guardian-login}"      # the verified CLI profile; an AWS_PROFILE you set yourself wins
+export MSYS_NO_PATHCONV=1      # Git Bash on Windows would turn "/aws/service/..." and "DeviceName=/dev/sda1" into C:/Program Files/Git/... before aws.exe sees them
 
 REGION="${AWS_REGION:-ap-south-1}"
-TYPE="${INSTANCE_TYPE:-t3.medium}"
+TYPE="${INSTANCE_TYPE:-c7i-flex.large}"
 DISK_GB="${DISK_GB:-30}"
+ALLOW_HTTPS="${ALLOW_HTTPS:-no}"                      # yes = also open TCP/UDP 443 (only for a later HTTPS setup)
 GUARDIAN_NAME="${GUARDIAN_NAME:-mcp-guardian}"        # not NAME: some shells already set that
 TAG_KEY="GuardianDeployment"
 KEY_FILE="${KEY_FILE:-$HOME/.ssh/${GUARDIAN_NAME}.pem}"
@@ -28,6 +36,7 @@ REPO_URL="${REPO_URL:-https://github.com/YugenJarwal13/MCPGuardian.git}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 aws_() { aws --region "$REGION" "$@"; }
 fail() { echo "ERROR: $*" >&2; exit 1; }
+[[ "$TYPE" =~ ^[a-z0-9-]+\.[a-z0-9-]+$ ]] || fail "INSTANCE_TYPE '$TYPE' does not look like an EC2 instance type (for example c7i-flex.large)."
 TAGS="{Key=Name,Value=$GUARDIAN_NAME},{Key=$TAG_KEY,Value=$GUARDIAN_NAME}"
 tag_spec() { echo "ResourceType=$1,Tags=[$TAGS]"; }
 tagged() { echo "Name=tag:$TAG_KEY,Values=$GUARDIAN_NAME"; }
@@ -97,7 +106,7 @@ check_instance() {
 }
 
 ACCOUNT="$(aws_ sts get-caller-identity --query Account --output text)"
-echo "Account: $ACCOUNT  Region: $REGION  Deployment: $GUARDIAN_NAME  Type: $TYPE"
+echo "Profile: $AWS_PROFILE  Account: $ACCOUNT  Region: $REGION  Deployment: $GUARDIAN_NAME  Type: $TYPE"
 
 # --- the one address SSH is allowed from: this machine's public IPv4 address
 SSH_CIDR="${SSH_CIDR:-$(curl -4 -fsS https://checkip.amazonaws.com | tr -d '[:space:]')/32}"
@@ -134,14 +143,17 @@ audit_security_group() {          # refuse to reuse a group that allows anything
       [ -n "$v4" ] || ok=no
       for c in ${v4//,/ }; do host_cidr "$c" || ok=no; done
     elif [ "$v4" = "0.0.0.0/0" ]; then
-      case "$proto:$from:$to" in tcp:80:80|tcp:443:443|udp:443:443) ok=yes ;; esac
+      case "$proto:$from:$to" in
+        tcp:80:80) ok=yes ;;
+        tcp:443:443|udp:443:443) if [ "$ALLOW_HTTPS" = yes ]; then ok=yes; fi ;;      # unused unless HTTPS was asked for
+      esac
     fi
     [ "$ok" = yes ] || bad+=("protocol=$proto ports=$from-$to ipv4=[$v4] ipv6=[$v6] security-group-sources=$groups prefix-lists=$prefixes")
   done <<< "$rules"
   if [ "${#bad[@]}" -gt 0 ]; then
     echo "ERROR: security group $SG ($GUARDIAN_NAME) has inbound rules that are not part of this deployment:" >&2
     printf '  %s\n' "${bad[@]}" >&2
-    fail "Intended rules are only: TCP 22 from one IPv4 /32, TCP 80 and TCP/UDP 443 from 0.0.0.0/0. Remove the rules above yourself (or use another GUARDIAN_NAME); this script does not rewrite rules it did not create."
+    fail "Intended rules are only: TCP 22 from one IPv4 /32 and TCP 80 from 0.0.0.0/0 (plus TCP/UDP 443 when ALLOW_HTTPS=yes). Remove the rules above yourself (or use another GUARDIAN_NAME); this script does not rewrite rules it did not create."
   fi
 }
 audit_security_group
@@ -162,8 +174,10 @@ allow() {              # protocol port cidr description
   echo "  added $1/$2 from $3"
 }
 allow tcp 80  0.0.0.0/0 http
-allow tcp 443 0.0.0.0/0 https
-allow udp 443 0.0.0.0/0 http3
+if [ "$ALLOW_HTTPS" = yes ]; then
+  allow tcp 443 0.0.0.0/0 https
+  allow udp 443 0.0.0.0/0 http3
+fi
 allow tcp 22  "$SSH_CIDR" ssh-admin                       # the current address goes in first ...
 refresh_rules
 stale="$(ssh_cidrs)"
@@ -282,8 +296,7 @@ IP="$(aws_ ec2 describe-addresses --allocation-ids "$ALLOC" --query 'Addresses[0
 cat <<MSG
 
 Instance $ID is running at $IP (first-boot setup takes about 3 minutes).
-  1. DNS: point an A record for your domain (and www) at $IP.
-  2. ssh -i "$KEY_FILE" ubuntu@$IP
-  3. check the first-boot result: ls /var/log/guardian-*   (guardian-setup-complete = Docker, swap and the code are in place)
-  4. then follow docs/deployment.md, step 4.
+  1. ssh -i "$KEY_FILE" ubuntu@$IP
+  2. check the first-boot result: ls /var/log/guardian-*   (guardian-setup-complete = Docker, swap and the code are in place)
+  3. then follow docs/deployment.md, step 5. The site will be at http://$IP (no domain needed).
 MSG

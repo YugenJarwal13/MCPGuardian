@@ -1,6 +1,10 @@
-# One origin for the page, the API and the WebSocket, so the browser needs no CORS and the backend's Origin
-# check passes. The domain's A record must point at this server; ports 80 and 443 must be reachable.
-{$GUARDIAN_DOMAIN} {
+# One origin for the page, the API and the WebSocket, so the browser needs no CORS and the backend's Origin check passes.
+#
+# GUARDIAN_SITE_ADDRESS decides how the site is served (default ":80"):
+#   :80              plain HTTP on any address, including the server's Elastic IP. No domain, no certificates, no redirect.
+#   a.domain.example HTTPS: Caddy gets and renews a certificate for that name, which then must point at this server.
+# Nothing here assumes a domain: the first deployment is HTTP on the IP address.
+{$GUARDIAN_SITE_ADDRESS::80} {
 	encode zstd gzip
 
 	@api path /health /servers /servers/* /probe /ws/* /oauth/*
@@ -18,12 +22,7 @@
 	}
 
 	header {
-		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
 	}
-}
-
-www.{$GUARDIAN_DOMAIN} {
-	redir https://{$GUARDIAN_DOMAIN}{uri} permanent
 }

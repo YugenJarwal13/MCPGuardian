@@ -1,11 +1,14 @@
 # MCP Guardian, production: three containers.
-#   web       the React app + HTTPS (Caddy); proxies the API and WebSocket to backend      -> the only published ports
+#   web       the React app + Caddy; proxies the API and WebSocket to backend      -> the only published port (80)
 #   backend   the API (FastAPI), the CrewAI/ADK inspectors, the A2A case manager
 #   dvmcp-lab the ten deliberately vulnerable DVMCP servers, a sidecar of backend (shares its network namespace,
 #             so they listen on 127.0.0.1 and nothing else can reach them)
 #
-#   cp deploy/production.env.example deploy/production.env      # fill in the keys
-#   docker compose --env-file deploy/production.env up -d --build
+# The site is served over plain HTTP on the server's address (an EC2 Elastic IP); no domain is needed.
+#   cp deploy/production.env.example deploy/production.env      # fill in the three secrets
+#   ln -sf deploy/production.env .env                           # so optional settings reach `docker compose` too
+#   for s in backend dvmcp-lab web; do docker compose build "$s"; done      # one at a time: low memory
+#   docker compose up -d
 services:
   backend:
     build:
@@ -14,7 +17,7 @@ services:
     init: true
     env_file: deploy/production.env
     environment:
-      GUARDIAN_PUBLIC_URL: "https://${GUARDIAN_DOMAIN:?GUARDIAN_DOMAIN is not set - pass --env-file deploy/production.env}"       # the address OAuth sign-ins return to
+      GUARDIAN_PUBLIC_URL: "${GUARDIAN_PUBLIC_URL:-}"       # optional: the address OAuth sign-ins return to; empty = the page's own address
     volumes:
       - guardian-state:/app/logs               # fingerprints, case history, model answer cache
     expose:
@@ -52,13 +55,14 @@ services:
       backend:
         condition: service_healthy
     environment:
-      GUARDIAN_DOMAIN: "${GUARDIAN_DOMAIN:?GUARDIAN_DOMAIN is not set - pass --env-file deploy/production.env}"
+      GUARDIAN_SITE_ADDRESS: "${GUARDIAN_SITE_ADDRESS:-:80}"       # ":80" = HTTP on any address; a domain name = automatic HTTPS
     ports:
       - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      # HTTPS (only once GUARDIAN_SITE_ADDRESS is a domain that points at this server): also publish
+      #   - "443:443"
+      #   - "443:443/udp"
     volumes:
-      - caddy-data:/data                       # the certificates
+      - caddy-data:/data                       # certificates (used only in HTTPS mode)
       - caddy-config:/config
     mem_limit: 256m
     logging: *logs

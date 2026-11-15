@@ -1,0 +1,208 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadOnlyDescribeInMumbai",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeVpcs",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeKeyPairs",
+        "ec2:DescribeInstances",
+        "ec2:DescribeAddresses",
+        "ec2:DescribeVolumes",
+        "ec2:DescribeInstanceTypes",
+        "ec2:DescribeInstanceCreditSpecifications"
+      ],
+      "Resource": "*",
+      "Condition": { "StringEquals": { "aws:RequestedRegion": "ap-south-1" } }
+    },
+    {
+      "Sid": "ReadUbuntu2404ImageParameter",
+      "Effect": "Allow",
+      "Action": "ssm:GetParameter",
+      "Resource": "arn:aws:ssm:ap-south-1::parameter/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id"
+    },
+
+    {
+      "Sid": "CreateSecurityGroupInAVpc",
+      "Effect": "Allow",
+      "Action": "ec2:CreateSecurityGroup",
+      "Resource": "arn:aws:ec2:ap-south-1:103973721389:vpc/*"
+    },
+    {
+      "Sid": "CreateOnlyTaggedSecurityGroup",
+      "Effect": "Allow",
+      "Action": "ec2:CreateSecurityGroup",
+      "Resource": "arn:aws:ec2:ap-south-1:103973721389:security-group/*",
+      "Condition": {
+        "StringEquals": { "aws:RequestTag/GuardianDeployment": "mcp-guardian", "aws:RequestTag/Name": "mcp-guardian" },
+        "ForAllValues:StringEquals": { "aws:TagKeys": ["GuardianDeployment", "Name"] }
+      }
+    },
+    {
+      "Sid": "ChangeIngressOfDeploymentSecurityGroupOnly",
+      "Effect": "Allow",
+      "Action": ["ec2:AuthorizeSecurityGroupIngress", "ec2:RevokeSecurityGroupIngress"],
+      "Resource": "arn:aws:ec2:ap-south-1:103973721389:security-group/*",
+      "Condition": { "StringEquals": { "aws:ResourceTag/GuardianDeployment": "mcp-guardian" } }
+    },
+
+    {
+      "Sid": "CreateOnlyTaggedKeyPair",
+      "Effect": "Allow",
+      "Action": "ec2:CreateKeyPair",
+      "Resource": "arn:aws:ec2:ap-south-1:103973721389:key-pair/*",
+      "Condition": {
+        "StringEquals": { "aws:RequestTag/GuardianDeployment": "mcp-guardian", "aws:RequestTag/Name": "mcp-guardian" },
+        "ForAllValues:StringEquals": { "aws:TagKeys": ["GuardianDeployment", "Name"] }
+      }
+    },
+    {
+      "Sid": "AllocateOnlyTaggedElasticIp",
+      "Effect": "Allow",
+      "Action": "ec2:AllocateAddress",
+      "Resource": "arn:aws:ec2:ap-south-1:103973721389:elastic-ip/*",
+      "Condition": {
+        "StringEquals": { "aws:RequestTag/GuardianDeployment": "mcp-guardian", "aws:RequestTag/Name": "mcp-guardian" },
+        "ForAllValues:StringEquals": { "aws:TagKeys": ["GuardianDeployment", "Name"] }
+      }
+    },
+
+    {
+      "Sid": "TagOnCreationOnly",
+      "Effect": "Allow",
+      "Action": "ec2:CreateTags",
+      "Resource": [
+        "arn:aws:ec2:ap-south-1:103973721389:instance/*",
+        "arn:aws:ec2:ap-south-1:103973721389:volume/*",
+        "arn:aws:ec2:ap-south-1:103973721389:security-group/*",
+        "arn:aws:ec2:ap-south-1:103973721389:key-pair/*",
+        "arn:aws:ec2:ap-south-1:103973721389:elastic-ip/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "ec2:CreateAction": ["RunInstances", "CreateSecurityGroup", "CreateKeyPair", "AllocateAddress"],
+          "aws:RequestTag/GuardianDeployment": "mcp-guardian",
+          "aws:RequestTag/Name": "mcp-guardian"
+        },
+        "ForAllValues:StringEquals": { "aws:TagKeys": ["GuardianDeployment", "Name"] }
+      }
+    },
+
+    {
+      "Sid": "RunInstancesOnlyC7iFlexLargeWithImdsV2",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:ap-south-1:103973721389:instance/*",
+      "Condition": {
+        "StringEquals": {
+          "ec2:InstanceType": "c7i-flex.large",
+          "ec2:MetadataHttpTokens": "required",
+          "aws:RequestTag/GuardianDeployment": "mcp-guardian",
+          "aws:RequestTag/Name": "mcp-guardian"
+        },
+        "ForAllValues:StringEquals": { "aws:TagKeys": ["GuardianDeployment", "Name"] }
+      }
+    },
+    {
+      "Sid": "RunInstancesRootVolume",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:ap-south-1:103973721389:volume/*",
+      "Condition": {
+        "Bool": { "ec2:Encrypted": "true" },
+        "StringEquals": {
+          "ec2:VolumeType": "gp3",
+          "aws:RequestTag/GuardianDeployment": "mcp-guardian",
+          "aws:RequestTag/Name": "mcp-guardian"
+        },
+        "NumericLessThanEquals": { "ec2:VolumeSize": "30" },
+        "ForAllValues:StringEquals": { "aws:TagKeys": ["GuardianDeployment", "Name"] }
+      }
+    },
+    {
+      "Sid": "RunInstancesFromCanonicalImagesOnly",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:ap-south-1::image/ami-*",
+      "Condition": { "StringEquals": { "ec2:Owner": "099720109477" } }
+    },
+    {
+      "Sid": "RunInstancesWithDeploymentKeyPair",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:ap-south-1:103973721389:key-pair/*",
+      "Condition": { "StringEquals": { "aws:ResourceTag/GuardianDeployment": "mcp-guardian" } }
+    },
+    {
+      "Sid": "RunInstancesWithDeploymentSecurityGroup",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:ap-south-1:103973721389:security-group/*",
+      "Condition": { "StringEquals": { "aws:ResourceTag/GuardianDeployment": "mcp-guardian" } }
+    },
+    {
+      "Sid": "RunInstancesInDefaultSubnetWithNewInterface",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": [
+        "arn:aws:ec2:ap-south-1:103973721389:subnet/*",
+        "arn:aws:ec2:ap-south-1:103973721389:network-interface/*"
+      ]
+    },
+
+    {
+      "Sid": "StartDeploymentInstanceOnly",
+      "Effect": "Allow",
+      "Action": "ec2:StartInstances",
+      "Resource": "arn:aws:ec2:ap-south-1:103973721389:instance/*",
+      "Condition": { "StringEquals": { "aws:ResourceTag/GuardianDeployment": "mcp-guardian" } }
+    },
+    {
+      "Sid": "AssociateDeploymentElasticIp",
+      "Effect": "Allow",
+      "Action": "ec2:AssociateAddress",
+      "Resource": [
+        "arn:aws:ec2:ap-south-1:103973721389:elastic-ip/*",
+        "arn:aws:ec2:ap-south-1:103973721389:instance/*"
+      ],
+      "Condition": { "StringEquals": { "aws:ResourceTag/GuardianDeployment": "mcp-guardian" } }
+    },
+    {
+      "Sid": "AssociateAddressNetworkInterface",
+      "Effect": "Allow",
+      "Action": "ec2:AssociateAddress",
+      "Resource": "arn:aws:ec2:ap-south-1:103973721389:network-interface/*"
+    },
+
+    {
+      "Sid": "TeardownTerminateDeploymentInstanceOnly",
+      "Effect": "Allow",
+      "Action": "ec2:TerminateInstances",
+      "Resource": "arn:aws:ec2:ap-south-1:103973721389:instance/*",
+      "Condition": { "StringEquals": { "aws:ResourceTag/GuardianDeployment": "mcp-guardian" } }
+    },
+    {
+      "Sid": "TeardownReleaseDeploymentElasticIpOnly",
+      "Effect": "Allow",
+      "Action": "ec2:ReleaseAddress",
+      "Resource": "arn:aws:ec2:ap-south-1:103973721389:elastic-ip/*",
+      "Condition": { "StringEquals": { "aws:ResourceTag/GuardianDeployment": "mcp-guardian" } }
+    },
+    {
+      "Sid": "TeardownDeleteDeploymentSecurityGroupOnly",
+      "Effect": "Allow",
+      "Action": "ec2:DeleteSecurityGroup",
+      "Resource": "arn:aws:ec2:ap-south-1:103973721389:security-group/*",
+      "Condition": { "StringEquals": { "aws:ResourceTag/GuardianDeployment": "mcp-guardian" } }
+    },
+    {
+      "Sid": "TeardownDeleteDeploymentKeyPairOnly",
+      "Effect": "Allow",
+      "Action": "ec2:DeleteKeyPair",
+      "Resource": "arn:aws:ec2:ap-south-1:103973721389:key-pair/*",
+      "Condition": { "StringEquals": { "aws:ResourceTag/GuardianDeployment": "mcp-guardian" } }
+    }
+  ]
+}
