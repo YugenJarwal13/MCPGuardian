@@ -14,7 +14,7 @@ services:
     init: true
     env_file: deploy/production.env
     environment:
-      GUARDIAN_PUBLIC_URL: "https://${GUARDIAN_DOMAIN}"       # the address OAuth sign-ins return to
+      GUARDIAN_PUBLIC_URL: "https://${GUARDIAN_DOMAIN:?GUARDIAN_DOMAIN is not set - pass --env-file deploy/production.env}"       # the address OAuth sign-ins return to
     volumes:
       - guardian-state:/app/logs               # fingerprints, case history, model answer cache
     expose:
@@ -52,7 +52,7 @@ services:
       backend:
         condition: service_healthy
     environment:
-      GUARDIAN_DOMAIN: "${GUARDIAN_DOMAIN}"
+      GUARDIAN_DOMAIN: "${GUARDIAN_DOMAIN:?GUARDIAN_DOMAIN is not set - pass --env-file deploy/production.env}"
     ports:
       - "80:80"
       - "443:443"
