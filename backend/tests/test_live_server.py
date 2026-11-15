@@ -288,3 +288,13 @@ def test_chosen_model_is_tried_first_and_unknown_models_are_refused(client, mcp_
     assert seen == ["m-b"]
     evs = _run_ws(client, {"server_id": "demo-clean", "use_llm": False, "model": "not-a-configured-model"})
     assert evs[0]["detail"]["guard"] == "model"
+
+
+def test_an_oauth_server_gets_time_to_sign_in_before_the_handshake_times_out():
+    from src.api.live_server import OAUTH_WAIT_S
+    from src.api.servers import CONNECT_TIMEOUT_S, ServerSpec, connect_timeout
+
+    plain = ServerSpec("x", "x", "custom", "custom-url", url="https://example.com/mcp")
+    signed_in = ServerSpec("y", "y", "custom", "custom-url", url="https://example.com/mcp", auth=object())
+    assert connect_timeout(plain) == CONNECT_TIMEOUT_S
+    assert connect_timeout(signed_in) == CONNECT_TIMEOUT_S + OAUTH_WAIT_S and OAUTH_WAIT_S >= 90

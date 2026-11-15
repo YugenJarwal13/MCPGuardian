@@ -31,6 +31,16 @@ from src.demo_agent.agent_config import (
 DVMCP_HOST = "127.0.0.1"
 CONNECT_TIMEOUT_S = 30
 
+
+def connect_timeout(spec: "ServerSpec") -> float:
+    """The handshake budget. A server that asks for an OAuth sign-in finishes its handshake only after the visitor
+    has signed in on the provider's page, so that wait (``OAUTH_WAIT_S``, four minutes) is added on top."""
+    if spec.auth is None:
+        return CONNECT_TIMEOUT_S
+    from src.api.live_server import OAUTH_WAIT_S
+
+    return CONNECT_TIMEOUT_S + OAUTH_WAIT_S
+
 _TITLES = {
     1: "Basic Prompt Injection", 2: "Tool Poisoning", 3: "Excessive Permission Scope",
     4: "Rug Pull", 5: "Tool Shadowing", 6: "Indirect Prompt Injection", 7: "Token Theft",
@@ -242,7 +252,7 @@ async def open_session(spec: ServerSpec) -> AsyncIterator[Any]:
         async with streamablehttp_client(spec.url, headers=spec.headers or None, auth=spec.auth,
                                          httpx_client_factory=guarded_client_factory) as (read, write, _sid):
             async with ClientSession(read, write) as session:
-                with anyio.fail_after(CONNECT_TIMEOUT_S):
+                with anyio.fail_after(connect_timeout(spec)):
                     await session.initialize()
                 yield session
         return
@@ -251,7 +261,7 @@ async def open_session(spec: ServerSpec) -> AsyncIterator[Any]:
              if spec.url else {})
     async with sse_client(target, **extra) as (read, write):
         async with ClientSession(read, write) as session:
-            with anyio.fail_after(CONNECT_TIMEOUT_S):
+            with anyio.fail_after(connect_timeout(spec)):
                 await session.initialize()
             yield session
 
