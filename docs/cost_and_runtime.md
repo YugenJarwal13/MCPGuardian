@@ -58,7 +58,7 @@ Tokens per live run are about (n + 1) x 1,800 (dots-3). "Check a server" (inspec
 
 | Resource | Limit | How the app copes |
 |---|---|---|
-| OpenRouter free models | about 50 requests/day, resets 00:00 UTC | `GUARDIAN_LLM_RUNS_PER_DAY` (default 10) caps AI-inspector runs per day; after that runs continue on regex rules and say so |
+| OpenRouter free models | about 50 requests/day, resets 00:00 UTC | `GUARDIAN_LLM_RUNS_PER_DAY` (default 10; 25 in the Docker image and the Render blueprint) caps AI-inspector runs per day; after that runs continue on regex rules and say so |
 | Free container hosts (e.g. Cloud Run free tier, Render free) | small CPU/RAM, may sleep when idle | the model is not hosted there, only called over the API; first request after sleep takes about a minute |
 | Abuse | anyone can open the page | per-visitor rate limit (12 runs/hour) and 2 concurrent runs; internal addresses refused |
 

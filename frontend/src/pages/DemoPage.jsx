@@ -4,6 +4,7 @@ import AutoFollowToggle from "../components/AutoFollowToggle.jsx";
 import FlowStepper from "../components/FlowStepper.jsx";
 import { Info, Play } from "../components/Icons.jsx";
 import { prettyModel } from "../components/LlmStatus.jsx";
+import ModelNotice from "../components/ModelNotice.jsx";
 import RunView from "../components/RunView.jsx";
 import { useAutoFollow } from "../hooks/useAutoFollow.js";
 import { usePipelineRun } from "../hooks/usePipelineRun.js";
@@ -290,6 +291,7 @@ export default function DemoPage({ health }) {
               <span className="num">03</span><h2>Execute the pipeline</h2>
               <p>The call moves through each layer in turn. Anything that needs a decision from you appears here.</p>
             </div>
+            <ModelNotice events={events} />
             <RunView part="live" events={events} running={running} onApprove={approve} serverName={serverLabel} />
           </section>
 

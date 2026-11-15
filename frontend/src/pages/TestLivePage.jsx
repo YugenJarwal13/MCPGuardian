@@ -4,6 +4,7 @@ import AutoFollowToggle from "../components/AutoFollowToggle.jsx";
 import FlowStepper from "../components/FlowStepper.jsx";
 import { Alert, Arrow, Check, Info, Link, Play } from "../components/Icons.jsx";
 import { prettyModel } from "../components/LlmStatus.jsx";
+import ModelNotice from "../components/ModelNotice.jsx";
 import Modal from "../components/Modal.jsx";
 import RunView from "../components/RunView.jsx";
 import { useAutoFollow } from "../hooks/useAutoFollow.js";
@@ -297,6 +298,7 @@ export default function TestLivePage({ health }) {
                 <span className="num">{mode === "call" ? "RUN" : "INSPECT"}</span>
                 <h2>{mode === "call" ? "Full security pipeline" : "Connecting and reading every tool"}</h2>
               </div>
+              <ModelNotice events={events} />
               <RunView events={events} running={running} onApprove={approve} serverName={hostOf(url)}
                 notRun={mode === "inspect" ? NOT_RUN_WHEN_INSPECTING : []} showCompare={mode === "call"} />
               {mode === "call" && done && !running && tools && (

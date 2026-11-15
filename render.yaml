@@ -20,6 +20,8 @@ services:
         sync: false
       - key: GUARDIAN_ACCESS_KEY        # optional: require a key for runs
         sync: false
+      - key: GUARDIAN_LLM_RUNS_PER_DAY  # AI-inspector runs per day for the whole site (the free model allows about 50 requests a day)
+        value: "25"
       - key: GUARDIAN_VERSION
         value: render
       - key: GUARDIAN_LAB               # lazy: start only the DVMCP challenge server that is picked (~25 MB each, stopped when idle)
