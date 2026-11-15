@@ -1,0 +1,12 @@
+# Used by backend/Dockerfile and backend/Dockerfile.lab (build context: backend/)
+.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.env
+.env.*
+logs
+external
+tests
+src/evaluation/reports
+**/*.md

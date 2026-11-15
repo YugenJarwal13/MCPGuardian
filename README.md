@@ -145,20 +145,11 @@ bash scripts/run_full_local_eval.sh                  # all cases with a local Ol
 - **Public mode** (`GUARDIAN_PUBLIC=1`): internal addresses are refused, runs are rate-limited, the daily number of
   LLM runs is capped, and the DVMCP challenges that execute commands or read files are inspect-only.
 
-## Docker
+## Docker and AWS
 
-```bash
-docker build -t mcp-guardian .
-docker run -p 7860:7860 -e OPENROUTER_API_KEY=... mcp-guardian
-```
-
-The image serves the web app and the API on one port, and starts the ten DVMCP lab servers inside the container
-(127.0.0.1 only; `GUARDIAN_LAB=off` skips them).
-
-### On a VPS with HTTPS
-
-`deploy/docker-compose.yml` runs the app behind Caddy, which obtains the HTTPS certificate by itself. The full steps
-(DNS, firewall, keys, start, checks, updates) are in [`docs/deployment.md`](docs/deployment.md).
+`docker-compose.yml` runs three containers: `web` (the React app and HTTPS), `backend` (the API) and `dvmcp-lab` (the ten DVMCP
+servers, reachable only from the backend). Each has its own Dockerfile and `.dockerignore`. The steps for an AWS EC2 instance
+(provisioning script, DNS, keys, start, checks, updates) are in [`docs/deployment.md`](docs/deployment.md).
 
 ## Repository layout
 

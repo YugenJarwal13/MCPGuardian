@@ -1,0 +1,29 @@
+# One origin for the page, the API and the WebSocket, so the browser needs no CORS and the backend's Origin
+# check passes. The domain's A record must point at this server; ports 80 and 443 must be reachable.
+{$GUARDIAN_DOMAIN} {
+	encode zstd gzip
+
+	@api path /health /servers /servers/* /probe /ws/* /oauth/*
+	handle @api {
+		reverse_proxy backend:8000 {
+			header_up X-Forwarded-For {remote_host}
+		}
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+		header /assets/* Cache-Control "public, max-age=31536000, immutable"
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+}
+
+www.{$GUARDIAN_DOMAIN} {
+	redir https://{$GUARDIAN_DOMAIN}{uri} permanent
+}

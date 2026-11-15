@@ -1,44 +1,49 @@
-# Deploying MCP Guardian on a VPS
+# Deploying MCP Guardian on AWS (EC2 + Docker Compose)
 
-One server runs two containers: the app (web app, API and the ten DVMCP lab servers) and Caddy, which serves
-HTTPS. Written for `careeristpro.cloud` on a Hostinger KVM VPS (Ubuntu); any Docker host works the same way.
+Three containers on one EC2 instance, started by `docker-compose.yml`:
 
-## 1. DNS
-In the domain's DNS zone (Hostinger: hPanel, Domains, DNS / Nameservers) add:
+| Service | Image built from | Role | Published |
+|---|---|---|---|
+| `web` | `frontend/Dockerfile` | the React app, HTTPS (Caddy, automatic certificate), proxy for the API and WebSocket | ports 80, 443 |
+| `backend` | `backend/Dockerfile` | FastAPI API, CrewAI and ADK inspectors, A2A case manager | none |
+| `dvmcp-lab` | `backend/Dockerfile.lab` | the ten DVMCP servers, a sidecar of `backend` (shares its network, listens on 127.0.0.1) | none |
 
-| Type | Name | Value |
-|---|---|---|
-| A | `@` | the VPS's public IPv4 address |
-| A | `www` | the same address |
+Each build context has its own `.dockerignore`. The lab is deliberately vulnerable, so it has no published port, a read-only
+filesystem, no Linux capabilities and a memory cap. Only `web` is reachable from the internet.
 
-Remove any other A or AAAA record for `@` (for example the one pointing at Hostinger's web hosting). Check with
-`nslookup careeristpro.cloud`; it must return the VPS address before the first start, or Caddy cannot get a certificate.
+## 1. AWS account and access
+- Use an IAM user (never the root account) with programmatic access, or an SSO profile. Needed permissions: EC2
+  (instances, security groups, key pairs, Elastic IPs, tags) and `ssm:GetParameter` (to find the Ubuntu image).
+- Configure it on your machine, so the keys never go into a chat or the repo: `aws configure --profile guardian`, then
+  `export AWS_PROFILE=guardian` and check `aws sts get-caller-identity`.
+- Pick a region near your visitors (default `ap-south-1`, Mumbai).
 
-## 2. The server
+## 2. Create the server
 ```bash
-ssh root@<vps-ip>
-apt-get update && apt-get -y upgrade
-# firewall: SSH, HTTP, HTTPS only. The lab servers are deliberately vulnerable and must never be reachable.
-ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 443/tcp && ufw --force enable
-# Docker (skip if `docker compose version` already works)
-curl -fsSL https://get.docker.com | sh
+AWS_REGION=ap-south-1 INSTANCE_TYPE=t3.small bash deploy/aws/provision.sh
 ```
-Docker publishes ports by editing the firewall itself, so `ufw` alone does not hide a published port. This setup publishes
-only Caddy's 80 and 443; do not add `ports:` to the `app` service.
+It creates a security group (SSH from your current IP only; 80 and 443 open), an ed25519 key pair saved to
+`~/.ssh/mcp-guardian.pem`, an Ubuntu 24.04 instance with an encrypted 30 GB disk and IMDSv2 only, and an Elastic IP. A first-boot
+script installs Docker, adds 2 GB of swap and clones the repository to `/opt/mcp-guardian`. (If the repository is private,
+set `REPO_URL` to a URL with a read-only token, or copy the code by `scp`.)
 
-## 3. The code and the keys
-```bash
-git clone https://github.com/YugenJarwal13/MCPGuardian.git && cd MCPGuardian
-cp deploy/server.env.example deploy/server.env
-nano deploy/server.env        # OPENROUTER_API_KEY, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
-```
+Size: the stack needs about 1 GB at rest (API ~300 MB, lab ~200 MB, proxy ~50 MB), so `t3.small` (2 GB) is the minimum I would use;
+`t3.medium` (4 GB) leaves headroom. Check current prices on the AWS pricing page: an instance, its disk and the Elastic IP are
+billed while they exist.
 
-## 4. Start
+## 3. DNS
+Create an A record for the domain (`careeristpro.cloud`) and for `www` pointing at the Elastic IP, in whichever DNS service holds the
+domain (Route 53 or the registrar). Check with `nslookup careeristpro.cloud`. Caddy cannot get a certificate until this resolves.
+
+## 4. Configure and start
 ```bash
-docker compose -f deploy/docker-compose.yml --env-file deploy/server.env up -d --build
-docker compose -f deploy/docker-compose.yml logs -f app      # wait for "DVMCP lab: 10/10 servers up"
+ssh -i ~/.ssh/mcp-guardian.pem ubuntu@<elastic-ip>
+cd /opt/mcp-guardian
+cp deploy/production.env.example deploy/production.env
+nano deploy/production.env       # OPENROUTER_API_KEY, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
+docker compose --env-file deploy/production.env up -d --build
+docker compose ps                # backend and dvmcp-lab should become "healthy"
 ```
-The first build takes a few minutes. Caddy requests the certificate on the first visit to `https://careeristpro.cloud`.
 
 ## 5. Check
 - `https://careeristpro.cloud/health` returns JSON with `"ok": true`.
@@ -47,18 +52,23 @@ The first build takes a few minutes. Caddy requests the certificate on the first
 - Langfuse shows a new trace with environment `production`.
 
 ## Operations
-| Task | Command |
+| Task | Command (in `/opt/mcp-guardian`) |
 |---|---|
-| Update to the latest code | `git pull && docker compose -f deploy/docker-compose.yml --env-file deploy/server.env up -d --build` |
-| Logs | `docker compose -f deploy/docker-compose.yml logs -f app` |
-| Restart | `docker compose -f deploy/docker-compose.yml restart app` |
-| Stop | `docker compose -f deploy/docker-compose.yml down` (volumes, and so the history and certificates, are kept) |
-| Memory | `docker stats --no-stream` |
+| Update | `git pull && docker compose --env-file deploy/production.env up -d --build` |
+| Logs | `docker compose logs -f backend` (also `web`, `dvmcp-lab`) |
+| Restart | `docker compose restart backend dvmcp-lab` |
+| Memory use | `docker stats --no-stream` |
+| Stop | `docker compose down` (volumes, with the history and certificates, are kept) |
+| Remove everything on AWS | `bash deploy/aws/teardown.sh` (asks first) |
 
-State (fingerprints, case history, model answer cache) lives in the `guardian-state` volume, certificates in `caddy-data`.
+State (fingerprints, case history, model-answer cache) lives in the `guardian-state` volume and the certificates in `caddy-data`.
+Take a snapshot of the instance's disk if you want a backup.
 
 ## Notes
 - The free model's daily quota (about 50 requests) is shared by every visitor; `GUARDIAN_LLM_RUNS_PER_DAY` caps the site.
 - Public mode is on in the image: internal addresses are refused, runs are rate-limited, and the DVMCP challenges that execute
   commands or read files are inspect-only.
 - OAuth sign-in needs `GUARDIAN_PUBLIC_URL`; compose sets it to `https://$GUARDIAN_DOMAIN`.
+- Not verified yet: the three images have not been built (Docker is not installed on the development machine), so the first build
+  on the server is the first real test. Likeliest issue: if the lab's read-only filesystem blocks a challenge, remove
+  `read_only: true` from `dvmcp-lab` in `docker-compose.yml`.

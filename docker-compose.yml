@@ -1,0 +1,69 @@
+# MCP Guardian, production: three containers.
+#   web       the React app + HTTPS (Caddy); proxies the API and WebSocket to backend      -> the only published ports
+#   backend   the API (FastAPI), the CrewAI/ADK inspectors, the A2A case manager
+#   dvmcp-lab the ten deliberately vulnerable DVMCP servers, a sidecar of backend (shares its network namespace,
+#             so they listen on 127.0.0.1 and nothing else can reach them)
+#
+#   cp deploy/production.env.example deploy/production.env      # fill in the keys
+#   docker compose --env-file deploy/production.env up -d --build
+services:
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    init: true
+    env_file: deploy/production.env
+    environment:
+      GUARDIAN_PUBLIC_URL: "https://${GUARDIAN_DOMAIN}"       # the address OAuth sign-ins return to
+    volumes:
+      - guardian-state:/app/logs               # fingerprints, case history, model answer cache
+    expose:
+      - "8000"
+    mem_limit: 1g
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging: &logs
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  dvmcp-lab:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.lab
+    restart: unless-stopped
+    init: true
+    network_mode: "service:backend"
+    depends_on:
+      backend:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    mem_limit: 512m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging: *logs
+
+  web:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      GUARDIAN_DOMAIN: "${GUARDIAN_DOMAIN}"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy-data:/data                       # the certificates
+      - caddy-config:/config
+    mem_limit: 256m
+    logging: *logs
+
+volumes:
+  guardian-state:
+  caddy-data:
+  caddy-config:

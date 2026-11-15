@@ -1,0 +1,26 @@
+# syntax=docker/dockerfile:1
+# The DVMCP lab: ten deliberately vulnerable MCP servers (127.0.0.1:9001-9010). It runs as a sidecar of the API
+# (docker-compose: network_mode: service:backend), so the servers are reachable only from the API container and
+# never from the network.
+
+FROM alpine:3.20 AS fetch
+RUN apk add --no-cache git
+# pinned upstream revision, so the lab is the same on every build
+ARG DVMCP_REF=79734c19f5104cd11486c90926d245560f53befa
+RUN git init /dvmcp && cd /dvmcp \
+    && git remote add origin https://github.com/harishsg993010/damn-vulnerable-MCP-server \
+    && git fetch --depth 1 origin "$DVMCP_REF" && git checkout --quiet FETCH_HEAD
+
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+WORKDIR /app
+# the lab needs only the MCP SDK and a web server
+RUN pip install "mcp>=1.2,<2" "uvicorn[standard]>=0.29" "fastapi>=0.110" "httpx>=0.27"
+COPY --from=fetch /dvmcp /app/external/damn-vulnerable-MCP-server
+COPY scripts/run_dvmcp_native.py /app/scripts/run_dvmcp_native.py
+RUN useradd --create-home --uid 1000 lab && chown -R lab:lab /app
+USER lab
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
+    CMD python -c "import socket;[socket.create_connection(('127.0.0.1',p),2) for p in range(9001,9011)]" || exit 1
+CMD ["python", "scripts/run_dvmcp_native.py"]

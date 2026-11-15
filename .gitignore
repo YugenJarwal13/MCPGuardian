@@ -41,4 +41,4 @@ Thumbs.db
 !**/.gitkeep
 .claude/
 
-deploy/server.env
+deploy/production.env
