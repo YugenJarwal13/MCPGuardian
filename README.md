@@ -152,16 +152,13 @@ docker build -t mcp-guardian .
 docker run -p 7860:7860 -e OPENROUTER_API_KEY=... mcp-guardian
 ```
 
-The image serves the web app and the API on one port. The DVMCP lab (ten extra processes) is off by default
-(`GUARDIAN_LAB=lazy` starts only the challenge server that is picked and stops it when idle; `on` starts all ten); without it the demo offers the offline attack stand-ins.
+The image serves the web app and the API on one port, and starts the ten DVMCP lab servers inside the container
+(127.0.0.1 only; `GUARDIAN_LAB=off` skips them).
 
-### Render
+### On a VPS with HTTPS
 
-`render.yaml` is a blueprint for one Docker web service (health check `/health`). Set the secrets in the Render dashboard
-(`OPENROUTER_API_KEY`, the Langfuse keys, `GUARDIAN_PUBLIC_URL` = the service's own address for OAuth sign-in). Things to know
-about the free plan: it sleeps after 15 idle minutes (about a minute to wake), has no persistent disk (traces go to Langfuse, not to
-a local file), and the free model's daily quota is shared by every visitor, so only about 10 to 15 full runs a day are possible.
-The backend needs roughly 250 to 300 MB; the image has not been built on Render yet.
+`deploy/docker-compose.yml` runs the app behind Caddy, which obtains the HTTPS certificate by itself. The full steps
+(DNS, firewall, keys, start, checks, updates) are in [`docs/deployment.md`](docs/deployment.md).
 
 ## Repository layout
 

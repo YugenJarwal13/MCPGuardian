@@ -40,3 +40,5 @@ Thumbs.db
 # Keep empty dirs tracked
 !**/.gitkeep
 .claude/
+
+deploy/server.env

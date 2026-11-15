@@ -4,9 +4,9 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../backend"
 mkdir -p logs
 
-# The DVMCP lab is ten extra Python processes (several hundred MB): off by default, GUARDIAN_LAB=on to start it
-# (needs an instance with enough memory). Without it the demo offers the offline attack stand-ins.
-if [ "${GUARDIAN_LAB:-off}" = "on" ]; then
+# The DVMCP lab is ten extra Python processes (about 200 MB): started by default, bound to 127.0.0.1 only.
+# GUARDIAN_LAB=off skips it for a small instance; the demo then offers the offline attack stand-ins.
+if [ "${GUARDIAN_LAB:-on}" = "on" ]; then
   python scripts/run_dvmcp_native.py > logs/dvmcp_lab.log 2>&1 &
 
   for _ in $(seq 1 60); do

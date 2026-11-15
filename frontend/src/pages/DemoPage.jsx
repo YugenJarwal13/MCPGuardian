@@ -31,7 +31,7 @@ function Card({ s, selected, onSelect, disabled }) {
       disabled={disabled} onClick={() => onSelect(s)}>
       <span className="sc-num">{n ? String(n).padStart(2, "0") : "·"}</span>
       <span className="sc-text"><b>{n ? cleanTitle(s) : s.name.replace(/\s*\(.*\)\s*$/, "")}</b><small>{blurb}</small></span>
-      {s.port ? <span className={`sc-state${s.live ? "" : " off"}`}>{s.up ? "running" : s.on_demand ? "starts when used" : "not running"}</span> : null}
+      {s.port ? <span className={`sc-state${s.live ? "" : " off"}`}>{s.live ? "running" : "not running"}</span> : null}
     </button>
   );
 }
