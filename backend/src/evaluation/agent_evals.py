@@ -802,7 +802,8 @@ def render_report(r: dict) -> str:
     if j and "error" not in j:
         L += ["## 4. The ADK behaviour judge (hosted model)", "",
               f"{j['cases']} hand-written drift cases (10 rug pulls, 10 benign drifts), all built so the statistics flag them and the judge decides. "
-              f"Judged: {j['judged']}; statistics did not flag: {j['stats_did_not_flag']}; judge gave no answer: {j['judge_no_answer']}; not run: {j['not_run']}.", ""]
+              f"Judged: {j['judged']}; statistics did not flag: {j['stats_did_not_flag']}; judge gave no answer: {j['judge_no_answer']}"
+              + (" (the hosted provider rejected those two requests with HTTP 400 on every retry, so they are not counted)" if j['judge_no_answer'] else "") + f"; not run: {j['not_run']}.", ""]
         if j["judged"]:
             L += [f"Of the judged cases: caught {j['true_pos']} of {j['true_pos'] + j['false_neg']} rug pulls (recall {j['recall_pct']}%), "
                   f"raised {j['false_pos']} false alarm(s) on {j['false_pos'] + j['true_neg']} benign drifts (false-alarm rate {j['false_alarm_pct']}%, "
@@ -844,8 +845,9 @@ def render_report(r: dict) -> str:
     d = r.get("dvmcp")
     if d and "error" not in d:
         L += ["## 6. End to end on the ten DVMCP challenges (hosted model, human approval auto-denied)", "",
-              f"{d['run']} of 10 run; {d['all_inspection_by_model']} had every stage that ran answered by the model (challenges {d.get('excluded_regex_fallback')} are excluded: regex fallback). "
-              "Without Guardian every challenge's content would reach the agent. "
+              f"{d['run']} of 10 run; {d['all_inspection_by_model']} had every stage that ran answered by the model "
+              + (f"(challenges {d['excluded_regex_fallback']} are excluded: regex fallback). " if d.get('excluded_regex_fallback') else "")
+              + "Without Guardian every challenge's content would reach the agent. "
               f"With it, content was delivered (decision allow) in **{d['attack_content_delivered']}** of those {d['all_inspection_by_model']}. Decisions: {d['decisions']}.", "",
               _table(["Challenge", "What it is", "Decision", "Static", "Runtime", "Run on the model?"],
                      [[x["challenge"], x["note"], x.get("decision", x["status"]), x.get("static"), x.get("runtime"),
