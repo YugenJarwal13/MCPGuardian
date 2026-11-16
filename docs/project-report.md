@@ -12,7 +12,7 @@ operations command reference, the problems met, and open issues).
 
 | Part | Sections |
 |---|---|
-| The application | 1 Overview and architecture, 2 Agents and communication, 3 Execution flow, 4 The demo, 5 Live server testing, 6 MCP and the agents, 7 Frontend and backend, 8 State and observability |
+| The application | 1 Overview and architecture, 2 Agents and communication, 3 Execution flow, 4 The demo, 5 Live server testing, 6 MCP and the agents, 7 Frontend and backend, 8 State and observability (8.3: **how data reaches Langfuse**) |
 | Running it | 9 Deployment and running, 10 Tests, results, limitations |
 | What is new | 11 Change log, 12 Live demo page and the DVMCP labs, 13 Check-a-server: authentication and OAuth, 14 Public-site security |
 | Production on AWS | 15 Architecture, 16 **Deployment walkthrough**, 17 **Command reference for the Ubuntu terminal**, 18 Problems and solutions, 19 Costs and teardown |
@@ -775,7 +775,7 @@ history.
 * **Callbacks** (`backend/src/monitoring.py`): CrewAI `step_callback`/`task_callback` and ADK
   agent/model/tool/error callbacks write intermediate outputs and errors to the audit trail and the active span.
 * **Langfuse:** export is attempted **only** when `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set
-  (OTLP/HTTP with Basic auth and `x-langfuse-ingestion-version: 4`).
+  (OTLP/HTTP with Basic auth and `x-langfuse-ingestion-version: 4`). The complete path, what is sent and masked, and how to verify it are in 8.3.
 
 **Verified vs attempted:**
 
@@ -784,6 +784,122 @@ history.
 | Spans created and written to `traces.jsonl` (tree, parent/child, attributes) | **[verified]** by `tests/test_observability.py` and live runs (the file grew with real runs) |
 | Callback records in the audit trail | **[verified]** with fakes in tests; CrewAI/ADK callbacks run in live runs but I did not inspect each record |
 | Langfuse receiving traces | **[verified in production]** by the exporter's own counters: `GET /health` → `tracing.exports.langfuse` showed `exported_spans` greater than 0 with `failed_spans: 0` and no `last_error`. I did not look at the Langfuse dashboard itself. Earlier work (`docs/observability.md`) checked it against a real Langfuse project. To verify by eye: run the demo and find the trace whose id is shown in the console header. |
+
+### 8.3 How data reaches Langfuse (the complete path)
+
+Langfuse receives two kinds of data from the backend: **traces** (spans, over OpenTelemetry/OTLP) and **scores** (a separate REST call). Both are sent
+**by the backend process**, never by the browser. The code is in `backend/src/observability.py`, `backend/src/api/events.py` and
+`backend/src/usage.py`; the longer reference is `docs/observability.md`.
+
+```mermaid
+flowchart LR
+    subgraph RUN["One pipeline run (backend process)"]
+        EM["EventEmitter<br/>api/events.py<br/>root span guardian.run + one span per stage"]
+        LLM["ChainLLM.complete<br/>llm_chain.py<br/>one span per model call"]
+        MCP["mcp.tools_list / mcp.call_tool<br/>api/runner.py"]
+        CB["CrewAI and ADK callbacks<br/>monitoring.py"]
+        ADK["ADK's own OpenTelemetry spans<br/>(judge, case manager)"]
+        USE["RunUsage<br/>usage.py<br/>tokens and cost per agent"]
+    end
+    EM & LLM & MCP & CB & ADK --> TP["TracerProvider<br/>(one per process, sampler)"]
+    TP --> BSP["BatchSpanProcessor<br/>queue 4096, every 2 s, 512 per batch"]
+    BSP --> SAN["SanitizingExporter<br/>mask secrets, enrich ADK spans, count successes and failures"]
+    SAN --> OTLP["OTLP/HTTP exporter, gzip<br/>POST /api/public/otel/v1/traces"]
+    SAN -.->|"only if GUARDIAN_TRACE_FILE is not off"| FILE["logs/traces.jsonl"]
+    OTLP -->|"HTTPS 443, Basic auth"| LF[("Langfuse cloud<br/>cloud.langfuse.com")]
+    EM -->|"at the end of the run"| SC["security_scores(...)"]
+    USE --> SC
+    SC -->|"background thread, 3 tries each<br/>POST /api/public/scores"| LF
+    EM -.->|"W3C traceparent header on the A2A call"| ADK
+```
+
+**Step by step**
+
+1. **Start-up.** `main.py::lifespan` calls `observability.init_tracing()`. It builds one `TracerProvider` whose *resource* carries
+   `service.name=mcp-guardian`, `service.version` and `langfuse.release` (from `GUARDIAN_VERSION`), and `deployment.environment` and
+   `langfuse.environment` (from `GUARDIAN_ENVIRONMENT`, default `production` in public mode, `local` otherwise). The sampler records every run
+   unless `GUARDIAN_TRACE_SAMPLE_RATIO` is below 1. The provider is also installed **globally**, so Google ADK's own spans (the behaviour judge, the case manager) and
+   the A2A library's spans land in the same trace.
+2. **Is Langfuse on?** `langfuse_configured()` is true only when **both** `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set in the environment, and never inside the
+   test suite (a guard on `PYTEST_CURRENT_TEST`), so tests can never write fake runs into the real project. If the keys are missing, nothing is sent.
+3. **One trace per run.** `EventEmitter.__init__` (`api/events.py`) starts the root span `guardian.run` with Langfuse attributes:
+   `langfuse.trace.name`, tags `["mcp-guardian", <environment>, <server id>]`, `langfuse.session.id` = the run id, and `langfuse.trace.metadata.server_id`. Each stage opens
+   a child span `guardian.<stage>` when its `started` event is emitted and closes it on its result event, copying the status, engine, model, provider, elapsed time, reasoning and
+   flagged phrases onto it. `set_user` adds `langfuse.user.id` as a **salted hash** of the visitor's address (`GUARDIAN_TRACE_SALT`); the address itself is never stored.
+4. **Model calls become "generations".** `ChainLLM.complete` (`llm_chain.py`) wraps each call in a span named after the calling agent (`static_inspector.llm`,
+   `runtime_inspector.llm`, ...) and sets `gen_ai.request.model`, the model name, the model parameters, `usage_details` (input and output tokens) and `cost_details`
+   (the provider's own figure, **0 for the free-tier models**), plus an estimated `reference_cost_usd`. An answer served from the local cache is recorded as a plain span ("served from
+   cache") that books no tokens and no cost. The ADK judge's calls arrive as ADK spans and are renamed and typed by `_enrich_adk`.
+5. **Tool calls.** `mcp.tools_list` and `mcp.call_tool` spans (`api/runner.py`) carry the arguments in and the reply out.
+6. **Sanitising.** Every span passes through `SanitizingExporter.export`, which calls `prepare_span`: every string attribute and event is passed through
+   `secret_scan.redact_text` (credential-like values are replaced), cut to 1,200 characters (`MAX_ATTR`, hard cap 20,000), and ADK spans are given the names and types Langfuse needs.
+   It works on a copy, so the original span is unchanged. `EventEmitter.scrub` additionally removes the run's known secrets (bearer tokens, header values, query-key values) from
+   every event before it is even attached to a span.
+7. **Batching and sending.** A `BatchSpanProcessor` queues up to 4,096 spans (`GUARDIAN_TRACE_QUEUE`), sends a batch every 2 seconds
+   (`GUARDIAN_TRACE_DELAY_MS`) of up to 512 spans with a 15-second timeout. The exporter is an `OTLPSpanExporter` (HTTP, gzip) posting to
+   `<LANGFUSE_HOST>/api/public/otel/v1/traces` with the headers `Authorization: Basic base64(public_key:secret_key)` and `x-langfuse-ingestion-version: 4`.
+   The host is `LANGFUSE_HOST` (or `LANGFUSE_BASE_URL`), default `https://cloud.langfuse.com` (the EU region; the US region is `https://us.cloud.langfuse.com`).
+8. **Trace-context propagation over A2A.** The A2A client adds the W3C `traceparent` header to its HTTP request (`a2a_bridge/bridge.py`, an httpx request hook) and the case manager's server
+   reads it (`a2a_bridge/a2a_server.py`, `opentelemetry.propagate.extract`), so the case manager's spans appear **inside the same trace** as the run.
+9. **Scores (a separate call).** When the `done` event is emitted, `security_scores(...)` computes the run's scores and `send_scores(trace_id, scores)` posts each one to
+   `<LANGFUSE_HOST>/api/public/scores` (Basic auth, id `<trace id>-<score name>`) from a background thread, with three attempts each and no effect on the run.
+10. **Shutdown.** On shutdown (`lifespan` finally, and `atexit`) `shutdown_tracing()` waits for pending score threads (5 s), flushes the span queue (10 s) and stops the exporters, so the last run is not lost
+    when the container restarts.
+
+**What a trace contains** (open one in Langfuse and look for these)
+
+| Langfuse item | Content | Set where |
+|---|---|---|
+| Trace name / tags / session / user | `guardian.run`; `mcp-guardian`, the environment, the server id; the run id; the hashed visitor | `events.py` (root span) |
+| Trace input / output | the server, tool and (masked, clipped to 3,000 characters) arguments; the status, decision and summary | `EventEmitter.emit` |
+| Trace metadata | `server_id`, `usage` (calls, tokens, cost per agent) | `events.py`, `usage.py::RunUsage` |
+| Observations (guardrails) | `guardian.static_check`, `.runtime_check`, `.behavioral_check`, `.enforcement` | `events.py::STAGE_TYPE` |
+| Observations (tools) | `guardian.tool_call`, `mcp.tools_list`, `mcp.call_tool` | `events.py`, `runner.py` |
+| Observations (agents) | `static_inspector`, `runtime_inspector` (CrewAI), `behaviour_judge`, `case_manager` (ADK) | `monitoring.py`, `observability._enrich_adk` |
+| Generations | model, messages, reply, tokens, cost (0 for free models), reference cost estimate, latency, whether it was cached, which slots were tried | `llm_chain.py::ChainLLM.complete` |
+| Levels / status | `WARNING` or `ERROR` with a reason for a failed or timed-out model call or an error event | `events.py` |
+| Scores | see below | `observability.py::security_scores` |
+
+**Scores sent per run** (`security_scores`): `guardian.decision` (categorical), `guardian.risk` (0 allow, 0.5 escalate or flagged inspection, 1 block),
+`guardian.static_flagged`, `guardian.runtime_flagged`, `guardian.behavioral_flagged` (booleans), `guardian.credential_leak`, `guardian.llm_coverage`
+(the share of inspection stages answered by the model rather than the regex fallback), `guardian.model_calls`, `guardian.tokens_total`, `guardian.tokens.<agent>`,
+`guardian.cost_usd` (provider figure) and `guardian.reference_cost_usd` (estimate at `GUARDIAN_REF_PRICE_IN_PER_M` / `_OUT_PER_M`, default 0.30 / 1.20 USD per million tokens).
+
+**What does and does not leave the server**
+
+| Sent to Langfuse | Never sent |
+|---|---|
+| prompts and replies of the model calls, tool descriptions, tool arguments and replies (masked, clipped), verdicts and reasoning, timings, token counts, the hashed visitor id, scores | the API keys and Langfuse keys, credentials supplied for a checked server (scrubbed), the visitor's IP address (only a salted hash), anything from test runs |
+
+Note that **text typed by visitors (tool arguments) and tool replies are sent to Langfuse** (masked and clipped), so the Langfuse project should be treated as holding that data.
+
+**Configuration** (set in `deploy/production.env` on the server; the template is `deploy/production.env.example`)
+
+| Variable | Purpose | Production value |
+|---|---|---|
+| `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | switch the export on and authenticate | set by hand on the server (secrets) |
+| `LANGFUSE_HOST` (or `LANGFUSE_BASE_URL`) | which Langfuse region | `https://cloud.langfuse.com` |
+| `GUARDIAN_ENVIRONMENT`, `GUARDIAN_VERSION` | the environment and release shown in Langfuse | `production`, `aws` |
+| `GUARDIAN_TRACE_SAMPLE_RATIO` | share of runs traced | not set (1, every run) |
+| `GUARDIAN_TRACE_FILE` | `off` skips the local `traces.jsonl` | `off` (set in `backend/Dockerfile`) |
+| `GUARDIAN_TRACE_QUEUE`, `GUARDIAN_TRACE_DELAY_MS` | batching | defaults (4096, 2000) |
+| `GUARDIAN_TRACE_SALT` | salt for the visitor hash | default |
+| `GUARDIAN_SHOW_LANGFUSE_LINK` | show the owner's dashboard link in the app (hidden on a public site unless `on`) | not set (hidden) |
+| `GUARDIAN_REF_PRICE_IN_PER_M`, `GUARDIAN_REF_PRICE_OUT_PER_M` | the reference price for the cost estimate | defaults |
+
+The network requirement is only **outbound HTTPS (443) from the backend container to the Langfuse host**; no inbound port is needed. Nothing about Langfuse is opened in the security group.
+
+**How to verify it is working**
+
+| Check | How | Expected |
+|---|---|---|
+| Keys present | the "secrets are configured" command in 17.6 | `LANGFUSE_PUBLIC_KEY: set`, `LANGFUSE_SECRET_KEY: set` |
+| Exporter status | `docker compose exec -T backend curl -s http://127.0.0.1:8000/health \| python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin)['tracing'], indent=1))"` | `langfuse: true`, and under `exports`: `langfuse` with `exported_spans` greater than 0, `failed_spans: 0`, `last_error: null`; after a run, `langfuse_scores` appears too |
+| By eye | run the demo, copy the trace id shown in the console header, search for it in Langfuse (or filter by environment `production`) | a `guardian.run` trace with the stage spans, generations and scores |
+
+**If it fails.** An export failure never affects a run: the failure is counted in `exports.langfuse.failed_spans` with the reason in `last_error`, and one warning a minute is logged. If the queue
+(4,096 spans) fills while Langfuse is unreachable, further spans are dropped (the run itself is unaffected). Typical causes: wrong or missing keys (HTTP 401), the wrong region host, or no outbound HTTPS.
+On 16 November 2026 the production counters showed spans exported with `failed_spans: 0`; I did not look at the Langfuse dashboard itself **[verified via the counters]**.
 
 ---
 
@@ -829,8 +945,8 @@ in section 17. Earlier hosting attempts (Hugging Face Spaces, Render, a Hostinge
 ### 9.4 CI **[runs on every push; no deploy step]**
 
 `.github/workflows/ci.yml` has a backend job (`pip install -r requirements.txt`, `pytest`) and a frontend job (`npm ci`, `npm run build`),
-on every push and pull request. It **does not deploy** anything: a push does not change the running site (20.3). Earlier the backend job failed on the
-Linux runner for an undiagnosed reason; the current result is shown in the repository's Actions tab.
+on every push and pull request. It **does not deploy** anything: a push does not change the running site (20.3). Earlier in the project the backend job failed on the
+Linux runner for an undiagnosed reason; it has since been fixed: the runs for commits `f3af6f5`, `f721fca` and `87a74ed` all finished with both jobs successful **[verified]**.
 
 ### 9.5 How live MCP testing differs in production
 
@@ -950,7 +1066,7 @@ that is new, with the file to open for each item. Sections 12 to 20 explain the 
 | 5 | **Input guard** | Refuses oversized, control-character, or instruction-like arguments and URLs. | `backend/src/security/input_guard.py` (`check_arguments`, `check_text`, `check_url`) |
 | 6 | **Optional access key** | One shared key required for runs, listings and resets (`GUARDIAN_ACCESS_KEY`). | `backend/src/security/access.py` |
 | 7 | **Credential-leak scan** | A reply that contains live credentials is flagged even if no instruction is found (this is what stops DVMCP challenge 7, token theft). Secrets are redacted in events and logs. | `backend/src/security/secret_scan.py`, `backend/src/mcp_gateway/interceptor.py::inspect_response_runtime` |
-| 8 | **Production tracing (Langfuse)** | Per-agent spans, model calls as generations with tokens and cost, security scores per run, masking exporter, sampling, export health. | `backend/src/observability.py`, `backend/src/usage.py`, `backend/src/api/events.py`, `docs/observability.md` |
+| 8 | **Production tracing (Langfuse)** | Per-agent spans, model calls as generations with tokens and cost, security scores per run, masking exporter, sampling, export health. The full data path is in **8.3**. | `backend/src/observability.py`, `backend/src/usage.py`, `backend/src/api/events.py`, `docs/observability.md` |
 | 9 | **Agent evaluation suite** | Each agent and the A2A hop evaluated separately (trajectory, policy conformance, A2A fidelity, behaviour statistics, judge, runtime inspector, DVMCP end to end, robustness to disguised attacks). | `backend/src/evaluation/agent_evals.py`, `frontend/src/data/agent_evals.json`, `frontend/src/pages/EvalsPage.jsx`, `docs/agent_evaluation.md` |
 | 10 | **Evaluations page and landing page** | Results, cost and traces for a visitor. | `frontend/src/pages/EvalsPage.jsx`, `frontend/src/pages/HomePage.jsx`, `frontend/src/components/HeroScene.jsx` |
 | 11 | **Notice when the AI inspector is unavailable** | A dialog tells the visitor when the daily AI budget is spent or the model did not answer and the regex checks took over. | `frontend/src/components/ModelNotice.jsx`, `backend/src/security/public_mode.py::RunLimiter.take_llm_run` |
@@ -2018,7 +2134,7 @@ presets, 1, 3 and 5 are stopped. Re-run `cd backend && python -m src.evaluation.
 
 `.github/workflows/ci.yml` runs `pytest` for the backend and `npm ci && npm run build` for the frontend on every push and pull request.
 It does not deploy. A push to GitHub does not change the running site; updating the site is the manual procedure in 16.11 and 17.10.
-Earlier reports found the backend job failing on GitHub; check the Actions tab for the current result (this report does not claim it passes).
+The last three runs (commits `f3af6f5`, `f721fca`, `87a74ed`) passed both jobs; the Actions tab always shows the current result.
 
 ### 20.4 Deployment scripts: three small gaps
 
