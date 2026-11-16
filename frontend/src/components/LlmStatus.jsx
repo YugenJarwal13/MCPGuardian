@@ -18,7 +18,7 @@ export default function LlmStatus({ health }) {
     return <span className="llm-pill is-wait"><span className="dot" />Connecting…</span>;
   }
   const chain = health.llm?.chain || [];
-  const usable = chain.filter((c) => c.usable);
+  const usable = chain.filter((c) => c.usable).filter((c, i, all) => all.findIndex((x) => x.model === c.model) === i);   // a backup key repeats the same models
   const primary = usable[0];
   if (!health.llm?.available || !primary) {
     return (
@@ -28,7 +28,7 @@ export default function LlmStatus({ health }) {
     );
   }
   const title = chain
-    .map((c) => `${c.usable ? "●" : "○"} ${PROVIDERS[c.provider] || c.provider}: ${prettyModel(c.model)} (${c.method})`)
+    .map((c) => `${c.usable ? "●" : "○"} ${PROVIDERS[c.provider] || c.provider}: ${prettyModel(c.model)} (${c.method})${c.account === "backup" ? " · backup key" : ""}`)
     .join("\n");
   return (
     <span className="llm-pill is-on" title={title}>

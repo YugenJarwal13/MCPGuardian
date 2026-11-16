@@ -64,7 +64,7 @@ export default function DemoPage({ health }) {
   const userPicked = useRef(false);
 
   const modelReady = !health || health.llm?.available;
-  const chain = (health?.llm?.chain || []).filter((c) => c.usable);
+  const chain = (health?.llm?.chain || []).filter((c) => c.usable).filter((c, i, all) => all.findIndex((x) => x.model === c.model) === i);   // the backup key repeats the same models
   const done = [...events].reverse().find((e) => e.stage === "done");
 
   // Rug-pull fixture: it behaves for 10 calls and changes on call 11, so the page tracks the call count.

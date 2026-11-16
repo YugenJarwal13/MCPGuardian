@@ -96,7 +96,9 @@ cp deploy/production.env.example deploy/production.env
 nano deploy/production.env        # OPENROUTER_API_KEY, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
 ln -sf deploy/production.env .env # lets `docker compose` read the optional settings too (.env is git-ignored)
 ```
-Required: `OPENROUTER_API_KEY`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` (leave the Langfuse keys empty to run without traces). Never
+Required: `OPENROUTER_API_KEY`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` (leave the Langfuse keys empty to run without traces).
+Optional: `OPENROUTER_API_KEY_2`, a second OpenRouter account. Every model is tried on the first key first; only when all of them fail (key rejected, or the
+free daily quota used up) does the chain repeat the same models on the second key, and only after that does it fall back to the regex rules. Never
 commit `production.env`. Everything else has a default; `GUARDIAN_SITE_ADDRESS` and `GUARDIAN_PUBLIC_URL` are optional and only matter
 once you have a domain (see "HTTPS later").
 
@@ -119,7 +121,8 @@ docker compose ps                 # backend and dvmcp-lab should become "healthy
 ```
 
 ## 8. Open the application
-`http://<elastic-ip>` in a browser. It is plain HTTP, so the browser shows no padlock; that is expected without a domain.
+`http://<elastic-ip>` in a browser. Until HTTPS is switched on (see "HTTPS" below) it is plain HTTP, so the browser shows no padlock. The
+production site now uses HTTPS on a free `sslip.io` name: `https://<ip-with-dashes>.sslip.io`, for example `https://43-205-72-210.sslip.io`.
 
 ## 9. Test it
 From your own machine (replace `<ip>`):
@@ -165,23 +168,33 @@ association, security group, key pair and tagged volumes), aborts on duplicates 
 deletes nothing until you type the confirmation line it prints (deployment name, account and region). Tagged volumes are only reported,
 never deleted. The local `.pem` is removed only after the key pair was deleted in AWS.
 
-## HTTPS later (optional, needs a domain you control)
-Not part of the first deployment. When you have a domain whose A record points at the Elastic IP, set in `deploy/production.env`:
-`GUARDIAN_SITE_ADDRESS=your.domain.example` and `GUARDIAN_PUBLIC_URL=https://your.domain.example`, uncomment the two `443` lines under
-`web.ports` in `docker-compose.yml`, run `docker compose up -d`, and open the port from your machine with
-`ALLOW_HTTPS=yes AWS_REGION=ap-south-1 INSTANCE_TYPE=<the type you launched> bash deploy/aws/provision.sh` (it adds TCP/UDP 443 to the
-security group; the type must match the running instance or the script stops). Caddy then obtains a
-certificate automatically.
+## HTTPS (what production uses; needed for OAuth sign-in)
+Not part of the very first deployment. OAuth providers refuse a plain-`http` callback on a public address, so the site was moved to HTTPS **without buying
+a domain**, using the free `sslip.io` service, which resolves `43-205-72-210.sslip.io` to `43.205.72.210`:
+
+1. Open TCP 443 on the security group (TCP only):
+   `aws ec2 authorize-security-group-ingress --group-id <sg-id> --ip-permissions 'IpProtocol=tcp,FromPort=443,ToPort=443,IpRanges=[{CidrIp=0.0.0.0/0,Description=HTTPS}]'`.
+   (`provision.sh` audits for the HTTP-only rule set and would refuse the group with 443 in it unless run with `ALLOW_HTTPS=yes`, which also adds UDP 443; use the
+   direct call above instead.)
+2. `docker-compose.yml` publishes `443:443` on the `web` service (already in the file).
+3. In `deploy/production.env` on the server set `GUARDIAN_SITE_ADDRESS=43-205-72-210.sslip.io` and `GUARDIAN_PUBLIC_URL=https://43-205-72-210.sslip.io`, then `docker compose up -d`.
+   Caddy obtains and renews a Let's Encrypt certificate itself; port 80 must stay open for the challenge and the redirect.
+
+With a domain you own, use that name instead and point its A record at the Elastic IP. `sslip.io` is shared, so Let's Encrypt's rate limits for it can occasionally delay a
+new certificate.
 
 ## Limitations
-- **OAuth sign-in** for remote MCP servers (Check a server) needs a callback address the provider accepts. Many providers refuse a plain
-  `http://<ip>` callback, so on the HTTP-only deployment use a bearer token, header or query-key credential instead, or set up HTTPS.
-- **Traffic is unencrypted** on the HTTP deployment: do not type secrets you care about into the Check-a-server credential fields over it
-  from an untrusted network.
+- **OAuth sign-in** for remote MCP servers (Check a server) needs an HTTPS callback address (see "HTTPS" above). Linear, Notion and Atlassian work that way. Slack publishes no
+  registration endpoint and Figma refuses registration, so for those two use a bearer token or header credential.
+- **On the HTTP-only deployment** traffic is unencrypted: do not type secrets you care about into the Check-a-server credential fields over it
+  from an untrusted network. (The production site is HTTPS.)
 - The free model's daily quota (about 50 requests) is shared by every visitor; `GUARDIAN_LLM_RUNS_PER_DAY` caps the site. When it is
   spent, the pages say so and fall back to the regex checks.
-- Public mode is on in the image: internal addresses are refused, runs are rate-limited, and the DVMCP challenges that execute commands
-  or read files are inspect-only.
-- The images have not been built on the target instance yet; the lab's `read_only` filesystem and 512m memory cap are unmeasured on Linux.
-  If the lab is killed for memory, raise `mem_limit` for `dvmcp-lab` in `docker-compose.yml`; if a challenge cannot write, check the `/tmp`
-  tmpfs first.
+- Public mode is on in the image: internal addresses are refused and runs are rate-limited. In this compose deployment the lab is a sealed sidecar
+  and `GUARDIAN_LAB_ISOLATED=1` lets visitors run all ten DVMCP challenges (code-execution and network challenges still wait for a human before the call).
+  Without that variable the challenges that execute commands or read files would be inspect-only.
+- Measured on the instance: the backend uses about 200 MiB of its 1 GiB, the lab about 423 MiB of its 512 MiB (close to the limit), the web container about 11 MiB.
+  If the lab is killed for memory, raise `mem_limit` for `dvmcp-lab` in `docker-compose.yml`; if a challenge cannot write, check the `/tmp` tmpfs first.
+- **Always run `docker compose up -d` without service names after changing the backend.** The lab shares the backend's network; recreating only the backend leaves the lab
+  cut off and the page hides the DVMCP cards. See section 17.10 of `docs/project-report.md`.
+- The container metadata-service block (a host firewall rule installed by hand) and the full command reference are in `docs/project-report.md`, sections 15.6 and 17.

@@ -26,6 +26,8 @@ export function foldEvents(events) {
       const richer = Object.keys(ev.detail || {}).length ? ev.detail : prev.detail;
       state[ev.stage] = {
         ...prev, ...ev, detail: richer || {}, startedAt: prev.startedAt,
+        // a stage that did not run (the call was refused before it) must not look like a pass
+        status: ev.detail?.skipped ? "skipped" : ev.status,
         // keep the model that produced the verdict across a later approval event on the same stage
         engine: ev.engine && ev.engine !== "none" ? ev.engine : prev.engine,
         provider: ev.provider || prev.provider, model: ev.model || prev.model,

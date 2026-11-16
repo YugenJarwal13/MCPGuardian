@@ -63,16 +63,26 @@ def origin_allowed(origin: str | None, host: str | None) -> bool:
 
 
 # DVMCP challenges whose tools do nothing dangerous when executed. Challenges 3-10 read files, touch
-# environment/state, or run commands by design; on a public host (which holds an API key in its
-# environment) they may only be INSPECTED, never called.
+# environment/state, or run commands by design; on a public host that runs the lab in the same container as
+# the API key they may only be INSPECTED, never called. (With the lab as a sealed sidecar container,
+# GUARDIAN_LAB_ISOLATED=1, this restriction is lifted: see lab_isolated().)
 EXECUTABLE_DVMCP = frozenset({"dvmcp-ch1", "dvmcp-ch2"})
 INSPECT_ONLY_NOTE = ("This DVMCP challenge is deliberately dangerous when executed (file access or command "
                      "execution), so the public demo only inspects it and never calls its tools. "
                      "Run MCP Guardian locally to see the full call.")
 
 
+def lab_isolated() -> bool:
+    """True when the DVMCP lab runs in its own sealed container (docker-compose sidecar: no secrets in its environment,
+    non-root, read-only filesystem, no capabilities, memory cap). Then its tools may be executed, which the full
+    pipeline needs: a lab attack shows up in the call and the response, not only in the tool description."""
+    return os.environ.get("GUARDIAN_LAB_ISOLATED", "").strip().lower() in ("1", "true", "yes")
+
+
 def restrict_execution(req: dict) -> str | None:
     """In public mode, turn a call on a dangerous lab server into an inspection. Returns a note or None."""
+    if lab_isolated():
+        return None
     sid = str(req.get("server_id") or "")
     if sid.startswith("dvmcp-") and sid not in EXECUTABLE_DVMCP and not req.get("inspect_only"):
         req["inspect_only"] = True

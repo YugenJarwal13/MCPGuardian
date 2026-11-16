@@ -69,7 +69,7 @@ export default function TestLivePage({ health }) {
   const followRun = useRef(false);        // scroll to the run once its first event has rendered the section
 
   const modelReady = !health || health.llm?.available;
-  const chain = (health?.llm?.chain || []).filter((c) => c.usable);
+  const chain = (health?.llm?.chain || []).filter((c) => c.usable).filter((c, i, all) => all.findIndex((x) => x.model === c.model) === i);   // the backup key repeats the same models
   const tools = snapshot?.tools || null;
   const done = [...events].reverse().find((e) => e.stage === "done");
   const inspectedEvent = mode === "inspect" ? [...events].reverse().find((e) => e.stage === "done" && e.detail?.inspect_only) : null;

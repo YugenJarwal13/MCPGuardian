@@ -43,7 +43,7 @@ from src.crewai_layer.crew import llm_available
 from src.evaluation.ablation_config import AblationConfig
 from src.observability import clip, tracer
 from src.security import access, secret_scan
-from src.security.input_guard import check_arguments, check_url
+from src.security.input_guard import OK as OK_GUARD, check_arguments, check_url
 from src.security.public_mode import check_public_target, limiter, origin_allowed, public_mode, restrict_execution
 from src.mcp_gateway.interceptor import (
     GuardianInterceptor,
@@ -518,7 +518,15 @@ async def _reject(ws: WebSocket, message: str, category: str, client: str) -> No
 async def _admit(ws: WebSocket, req: dict, client: str) -> tuple[bool, str | None]:
     """Input guard + (in public mode) rate limits and SSRF protection.
     Returns ``(admitted, notice)``; when not admitted the refusal has already been sent."""
-    res = check_arguments(req.get("arguments"))
+    # A built-in demo server's own preset arguments are trusted as they are: the poisoned-document demo (DVMCP
+    # challenge 6) deliberately carries an injected instruction, which the guard would otherwise refuse. Any
+    # edit to them, or arguments for any other server, still goes through the guard.
+    try:
+        spec = get_spec(str(req.get("server_id") or ""))
+    except KeyError:                       # a custom URL ("Check live") has no built-in server id
+        spec = None
+    own_preset = bool(spec and spec.default_args and req.get("arguments") == spec.default_args)
+    res = OK_GUARD if own_preset else check_arguments(req.get("arguments"))
     if not res.ok:
         await _reject(ws, f"Input rejected by the input guard: {res.reason}.", res.category, client)
         return False, None

@@ -78,6 +78,15 @@ class ChainError(RuntimeError):
     CrewAI's own transient-retry wrapper does not re-run the whole chain.)"""
 
 
+PRIMARY_KEY_ENV = "OPENROUTER_API_KEY"
+BACKUP_KEY_ENV = "OPENROUTER_API_KEY_2"     # optional second OpenRouter account, tried after the first one fails
+
+
+def _key(env_name: str) -> str:
+    v = (os.environ.get(env_name) or "").strip()
+    return "" if _is_placeholder(v) else v
+
+
 @dataclass
 class Slot:
     provider: str            # "openrouter" | "ollama"
@@ -85,10 +94,15 @@ class Slot:
     method: str
     disabled_reason: Optional[str] = None
     disabled_until: float = 0.0          # monotonic; 0 = not temporarily disabled
+    key_env: str = "OPENROUTER_API_KEY"  # which environment variable holds this slot's OpenRouter key
+
+    @property
+    def account(self) -> str:
+        return "primary" if self.key_env == PRIMARY_KEY_ENV else "backup"
 
     @property
     def label(self) -> str:
-        return f"{self.provider}:{self.model}"
+        return f"{self.provider}:{self.model}" + ("" if self.account == "primary" else " [backup key]")
 
     def usable(self) -> bool:
         if self.disabled_reason:
@@ -128,6 +142,9 @@ def build_slots(include_local_fallback: bool = True) -> list[Slot]:
             if method not in METHODS:
                 raise ValueError(f"unknown structured method {method!r} (expected {METHODS})")
             slots.append(Slot("openrouter", _resolve_slug(m), method))
+        if _key(BACKUP_KEY_ENV):
+            # a second OpenRouter account: the same models again, tried only after every model on the first key failed
+            slots += [Slot("openrouter", sl.model, sl.method, key_env=BACKUP_KEY_ENV) for sl in list(slots)]
     elif provider == "ollama":
         slots.append(Slot("ollama", _local_model(), "ollama_format"))
         return slots           # an explicit local run never silently leaves Ollama
@@ -271,7 +288,7 @@ class ChainLLM:
         self._transport = transport or self._http
         self.timeout_s = timeout_s
         self.max_tokens = max_tokens
-        self.free_tier_exhausted_until = 0.0
+        self._quota_until: dict[str, float] = {}     # key env var -> monotonic time its free-tier daily quota resets
         rpm = rpm or float(os.environ.get("OPENROUTER_RPM", "16"))
         self._bucket = _Bucket(rpm)
         if use_cache is None:
@@ -283,11 +300,30 @@ class ChainLLM:
     # -- identity ---------------------------------------------------------------
     @property
     def chain_id(self) -> str:
-        return " > ".join(f"{s.provider}:{s.model}:{s.method}" for s in self.slots)
+        # the backup key repeats the same models, so it is not part of the identity: a cached answer stays valid
+        seen: list[str] = []
+        for s in self.slots:
+            ident = f"{s.provider}:{s.model}:{s.method}"
+            if ident not in seen:
+                seen.append(ident)
+        return " > ".join(seen)
+
+    @property
+    def free_tier_exhausted_until(self) -> float:
+        """When the free tier is usable again: the EARLIEST reset across the keys in use (0 while any key still has quota)."""
+        keys = {s.key_env for s in self.slots if s.provider == "openrouter"}
+        if not keys:
+            return 0.0
+        return min(self._quota_until.get(k, 0.0) for k in keys)
+
+    @free_tier_exhausted_until.setter
+    def free_tier_exhausted_until(self, value: float) -> None:
+        for k in {s.key_env for s in self.slots if s.provider == "openrouter"} or {PRIMARY_KEY_ENV}:
+            self._quota_until[k] = value
 
     def describe(self) -> list[dict]:
         return [{"provider": s.provider, "model": s.model, "method": s.method,
-                 "usable": s.usable(), "disabled_reason": s.disabled_reason} for s in self.slots]
+                 "usable": s.usable(), "disabled_reason": s.disabled_reason, "account": s.account} for s in self.slots]
 
     # -- public ----------------------------------------------------------------
     def complete(self, system: str, user: str, extra_key: str = "") -> tuple[dict, dict]:
@@ -353,7 +389,7 @@ class ChainLLM:
         tried: list[str] = []
         ordered = sorted(self.slots, key=lambda sl: sl.model != preferred) if preferred else self.slots
         for slot in ordered:
-            if slot.provider == "openrouter" and time.monotonic() < self.free_tier_exhausted_until:
+            if slot.provider == "openrouter" and time.monotonic() < self._quota_until.get(slot.key_env, 0.0):
                 tried.append(f"{slot.label}: free-tier daily quota exhausted")
                 continue
             if not slot.usable():
@@ -409,6 +445,13 @@ class ChainLLM:
                     slot.disabled_until = time.monotonic() + PROVIDER_ERROR_COOLDOWN_S
                     self.events.append(f"slot {slot.label} resting {PROVIDER_ERROR_COOLDOWN_S // 60} min after an upstream error")
                 return None
+            if status == 401 and slot.provider == "openrouter":
+                # a rejected KEY, not a bad model: stop using this key for every model, so the backup key takes over at once
+                for other in self.slots:
+                    if other.provider == "openrouter" and other.key_env == slot.key_env and not other.disabled_reason:
+                        self._disable(other, f"HTTP 401: {self._err(data)}")
+                tried.append(f"{slot.label}: HTTP 401 (key rejected)")
+                return None
             if status in (400, 401, 403, 404):
                 self._disable(slot, f"HTTP {status}: {self._err(data)}")
                 tried.append(f"{slot.label}: HTTP {status} (disabled)")
@@ -417,8 +460,9 @@ class ChainLLM:
                 if "per-day" in msg or "per day" in msg or "daily" in msg:
                     reset = self._reset_in(headers, data)
                     with self._lock:
-                        self.free_tier_exhausted_until = time.monotonic() + reset
-                        self.events.append(f"free-tier daily quota exhausted; resets in ~{reset/3600:.1f} h")
+                        self._quota_until[slot.key_env] = time.monotonic() + reset
+                        self.events.append(f"free-tier daily quota exhausted on the {slot.account} key; "
+                                           f"resets in ~{reset/3600:.1f} h")
                     tried.append(f"{slot.label}: daily quota exhausted")
                     return None
                 time.sleep(min(self._reset_in(headers, data, default=8.0), 30.0))
@@ -508,9 +552,9 @@ class ChainLLM:
             url = os.environ.get("LOCAL_LLM_ENDPOINT", "http://localhost:11434").rstrip("/") + "/api/chat"
             headers = {}
         else:
-            key = os.environ.get("OPENROUTER_API_KEY")
+            key = _key(slot.key_env)
             if not key:
-                return 401, {}, {"error": {"message": "OPENROUTER_API_KEY not set"}}
+                return 401, {}, {"error": {"message": f"{slot.key_env} not set"}}
             url, headers = OPENROUTER_URL, {"Authorization": f"Bearer {key}",
                                             "X-Title": "MCP Guardian (course project)"}
         r = httpx.post(url, json=payload, headers=headers, timeout=timeout)
@@ -547,7 +591,7 @@ def chain_available() -> bool:
     except ValueError:
         return False
     for s in slots:
-        if s.provider == "openrouter" and os.environ.get("OPENROUTER_API_KEY"):
+        if s.provider == "openrouter" and _key(s.key_env):
             return True
         if s.provider == "ollama" and _ollama_up(_local_model()):
             return True

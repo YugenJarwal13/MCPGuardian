@@ -24,7 +24,7 @@ USER guardian
 ENV GUARDIAN_PUBLIC=1 \
     GUARDIAN_RUNS_PER_HOUR=12 \
     GUARDIAN_CONCURRENT_RUNS=2 \
-    GUARDIAN_LLM_RUNS_PER_DAY=25 \
+    GUARDIAN_LLM_RUNS_PER_DAY=80 \
     GUARDIAN_TRACE_FILE=off \
     LLM_PROVIDER=openrouter \
     LLM_MODEL=dots-studio/dots-3-note-preview:free \

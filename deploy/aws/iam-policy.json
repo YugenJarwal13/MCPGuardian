@@ -122,11 +122,10 @@
       }
     },
     {
-      "Sid": "RunInstancesFromCanonicalImagesOnly",
+      "Sid": "RunInstancesFromVerifiedUbuntuImage",
       "Effect": "Allow",
       "Action": "ec2:RunInstances",
-      "Resource": "arn:aws:ec2:ap-south-1::image/ami-*",
-      "Condition": { "StringEquals": { "ec2:Owner": "099720109477" } }
+      "Resource": "arn:aws:ec2:ap-south-1::image/ami-09d8c1e69d114dbf7"
     },
     {
       "Sid": "RunInstancesWithDeploymentKeyPair",
